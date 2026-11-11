@@ -280,20 +280,20 @@ qqline(ABpool_samples_t[,2])
 # Rubin's rules
 t1 <- Sys.time()
 glm_var <- t(vapply(glms,vcov, FUN.VALUE=numeric(4)))
-rubin <- mice::pool(glms, dfcom=glms[[1]]$df.residual) # Note mice::pool(glms) gives the same result.
-rubin_small <- mice::pool(glms, dfcom=glms[[1]]$df.residual)
+rubin_norm <- mice::pool(glms, dfcom=Inf)
+rubin_t <- mice::pool(glms, dfcom=glms[[1]]$df.residual) # Note mice::pool(glms) gives the same result.
 t2 <- Sys.time()
 (time_Plummer_Rubin <- difftime(t2,t1))
-rubin$pooled$estimate
-rubin$pooled$t
+rubin_t$pooled$estimate
+rubin_t$pooled$t
 # df
-rubin$pooled$df # 0.43, 0.18
+rubin_t$pooled$df # 0.43, 0.18
 # fmi
-rubin$pooled$fmi # 0.98, 0.99
+rubin_t$pooled$b/(rubin_t$pooled$ubar*rubin_t$pooled$df/(rubin_t$pooled$df-2)+rubin_t$pooled$b) # 0.98, 0.99
 # U_bar
-rubin$pooled$ubar # 0.000090, 0.12
+rubin_t$pooled$ubar # 0.000090, 0.12
 # b
-rubin$pooled$b # 0.019, 6.3
+rubin_t$pooled$b # 0.019, 6.3
 
 ## Bayesian multiple imputation
 # Check how many iterations are needed
@@ -348,61 +348,56 @@ saveRDS(BayesMI_thetas,paste0(output_directory,"/Plummer_BayesMI_thetas.RDS"))
 BayesMI_thetas <- readRDS(paste0(output_directory,"/Plummer_BayesMI_thetas.RDS"))
 (time_Plummer_BayesMI <- difftime(t2,t1))
 
-png(paste0(plot_directory,"/Plummer_QQ.png"),width = 1400,height=1000, pointsize=23)
-par(mfrow=c(2,2), mar = c(2.5,2.5,2.5,0.1),oma=c(4.1,4.1,0.1,1))
-qqnorm(glm_theta[,1], main = "MLEs for theta_1 after imputation")
-qqline(glm_theta[,1])
-qqnorm(glm_theta[,2], main = "MLEs for theta_2 after imputation")
-qqline(glm_theta[,2])
-qqnorm(BayesMI_thetas[,1], main = "Posterior for theta_1 after imputation")
-qqline(BayesMI_thetas[,1])
-qqnorm(BayesMI_thetas[,2], main = "Posterior for theta_2 after imputation")
-qqline(BayesMI_thetas[,2])
+set.seed(1)
+HPV_abpool <- abpool::abpool(glms[1:200], parameters = 2, dfcom = Inf)
+
+png(paste0(plot_directory,"/Plummer_QQ_diagnostic.png"),width = 1400,height=1000, pointsize=23)
+abpool::qqplot_rubin_abpool(HPV_abpool)
 dev.off()
 
 CIs_theta_1 <- rbind(quantile(BayesMI_thetas[,1],c(0.025,0.975)),
-                     quantile(ABpool_samples_t[,1],c(0.025,0.975)),
                      quantile(ABpool_samples_norm[,1],c(0.025,0.975)),
-                     rubin$pooled$estimate[1] + c(-1,1)*qt(p=0.975, df=rubin$pooled$df[1])*sqrt(rubin$pooled$t[1]),
-                     rubin$pooled$estimate[1] + c(-1,1)*qt(0.975,(rubin$m-1)/rubin$pooled$fmi[1]^2)*sqrt(rubin$pooled$t[1]))
+                     quantile(ABpool_samples_t[,1],c(0.025,0.975)),
+                     rubin_norm$pooled$estimate[1] + c(-1,1)*qt(0.975,rubin_norm$pooled$df[1])*sqrt(rubin_norm$pooled$t[1]),
+                     rubin_t$pooled$estimate[1] + c(-1,1)*qt(p=0.975, df=rubin_t$pooled$df[1])*sqrt(rubin_t$pooled$t[1]))
 results_theta_1 <- cbind("Posterior mean"=c(mean(BayesMI_thetas[,1]),
-                                            mean(ABpool_samples_t[,1]),
                                             mean(ABpool_samples_norm[,1]),
-                                            rubin$pooled$estimate[1],
-                                            rubin$pooled$estimate[1]),
+                                            mean(ABpool_samples_t[,1]),
+                                            rubin_norm$pooled$estimate[1],
+                                            rubin_t$pooled$estimate[1]),
                          "Posterior median"=c(median(BayesMI_thetas[,1]),
-                                              median(ABpool_samples_t[,1]),
                                               median(ABpool_samples_norm[,1]),
-                                              rubin$pooled$estimate[1],
-                                              rubin$pooled$estimate[1]),
+                                              median(ABpool_samples_t[,1]),
+                                              rubin_norm$pooled$estimate[1],
+                                              rubin_t$pooled$estimate[1]),
                          CIs_theta_1)
-rownames(results_theta_1) <- c("Bayespool","ABpool_t","ABpool_norm","Rubin_t","Rubin_norm")
+rownames(results_theta_1) <- c("Bayes_MI","ABpool_norm","ABpool_t","Rubin_norm","Rubin_t")
 write.csv(round(results_theta_1,2),paste0(output_directory,"/Plummer_results_theta_1.csv"),row.names=T)
 
 CIs_theta_2 <- rbind(quantile(BayesMI_thetas[,2],c(0.025,0.975)),
-                     quantile(ABpool_samples_t[,2],c(0.025,0.975)),
                      quantile(ABpool_samples_norm[,2],c(0.025,0.975)),
-                     rubin$pooled$estimate[2] + c(-1,1)*qt(p=0.975, df=rubin$pooled$df[2])*sqrt(rubin$pooled$t[2]),
-                     rubin$pooled$estimate[2] + c(-1,1)*qt(0.975,(rubin$m-1)/rubin$pooled$fmi[2]^2)*sqrt(rubin$pooled$t[2]))
+                     quantile(ABpool_samples_t[,2],c(0.025,0.975)),
+                     rubin_norm$pooled$estimate[2] + c(-1,1)*qt(0.975,rubin_norm$pooled$df[2])*sqrt(rubin_norm$pooled$t[2]),
+                     rubin_t$pooled$estimate[2] + c(-1,1)*qt(p=0.975, df=rubin_t$pooled$df[2])*sqrt(rubin_t$pooled$t[2]))
 results_theta_2 <- cbind("Posterior mean"=c(mean(BayesMI_thetas[,2]),
-                                            mean(ABpool_samples_t[,2]),
                                             mean(ABpool_samples_norm[,2]),
-                                            rubin$pooled$estimate[2],
-                                            rubin$pooled$estimate[2]),
+                                            mean(ABpool_samples_t[,2]),
+                                            rubin_norm$pooled$estimate[2],
+                                            rubin_t$pooled$estimate[2]),
                          "Posterior median"=c(median(BayesMI_thetas[,2]),
-                                              median(ABpool_samples_t[,2]),
                                               median(ABpool_samples_norm[,2]),
+                                              median(ABpool_samples_t[,2]),
                                               rubin$pooled$estimate[2],
-                                              rubin$pooled$estimate[2]),
+                                              rubin_t$pooled$estimate[2]),
                          CIs_theta_2)
-rownames(results_theta_2) <- c("Bayespool","ABpool_t","ABpool_norm","Rubin_t","Rubin_norm")
-write.csv(round(results_theta_2,2),paste0(output_directory,"/Plummer_results_theta_2.csv"),row.names=T)
+rownames(results_theta_2) <- c("Bayes_MI","ABpool_norm","ABpool_t","Rubin_norm","Rubin_t")
+write.csv(round(results_theta_2,1),paste0(output_directory,"/Plummer_results_theta_2.csv"),row.names=T)
 
 other_info <- round(rbind("Bayespool estimate" = colMeans(BayesMI_thetas),
-                          "ABpool & Rubin estimate" = rubin$pooled$estimate, # Equal to the ABpool estimates
-                          "dfcom" = rubin$pooled$dfcom,
-                          "fmi" = rubin$pooled$fmi,
-                          "df" = rubin$pooled$df,
+                          "ABpool & Rubin estimate" = rubin_norm$pooled$estimate, # Equal to the ABpool estimates
+                          "dfcom" = rubin_norm$pooled$dfcom,
+                          "fmi" = rubin_norm$pooled$fmi,
+                          "df" = rubin_norm$pooled$df,
                           "MLEs skewness" = apply(glm_theta, 2, skewness),
                           "MLEs kurtosis" = apply(glm_theta, 2, kurtosis),
                           "Posterior skewness" = apply(BayesMI_thetas, 2, skewness),
@@ -427,16 +422,17 @@ saveRDS(times_Plummer,paste0(output_directory,"/Plummer_runtimes.RDS"))
 # Plot of distribution for theta_1
 png(paste0(plot_directory,"/Plummer_theta_1.png"),width = 1400,height=1000, pointsize=23)
 plot(density(BayesMI_thetas[,1]), main = "Distribution of theta_1",xlab="theta_1",lwd=3,ylim=c(0,3.2))
-lines(density(ABpool_samples_t[,1]), col= outcome_cols[1],lwd=2)
-lines(density(ABpool_samples_norm[,1]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(ABpool_samples_norm[,1]), col= outcome_cols[1],lwd=2)
+lines(density(ABpool_samples_t[,1]), col= outcome_cols[1], lty=2, lwd=2)
 xx <- seq(min(ABpool_samples_norm[,1])-1,max(ABpool_samples_norm[,1])+1,0.0001)
-xt <- (xx-rubin$pooled$estimate[1])/sqrt(rubin$pooled$t[1])
-tt <- dt(xt,df=rubin$pooled$df[1])/sqrt(rubin$pooled$t[1]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
-lines(tt~xx, col = outcome_cols[2],lwd=2)
-nn <- dt(xt,df=(rubin$m-1)/rubin$pooled$fmi[1]^2)/sqrt(rubin$pooled$t[1])
-lines(nn~xx, col = outcome_cols[2],lty=2,lwd=2)
+xn <- (xx-rubin_norm$pooled$estimate[1])/sqrt(rubin_norm$pooled$t[1])
+xt <- (xx-rubin_t$pooled$estimate[1])/sqrt(rubin_t$pooled$t[1])
+tt <- dt(xt,df=rubin_t$pooled$df[1])/sqrt(rubin_t$pooled$t[1]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
+nn <- dt(xn,df=rubin_norm$pooled$df[1])/sqrt(rubin_norm$pooled$t[1])
+lines(nn~xx, col = outcome_cols[2],lwd=2)
+lines(tt~xx, col = outcome_cols[2],lty=2 ,lwd=2)
 legend(x=-2.4,y=2.0,
-       legend = c("MI_Bayes","ABpool_t","ABpool_norm","Rubin_t","Rubin_norm"),
+       legend = c("MI_Bayes","ABpool_norm","ABpool_t","Rubin_norm","Rubin_t"),
        col = c("black",rep(outcome_cols,each=2)),
        lty = c(1,1,2,1,2),lwd=c(3,2,2,2,2))
 dev.off()
@@ -444,16 +440,17 @@ dev.off()
 # Similar to  above for theta_2
 png(paste0(plot_directory,"/Plummer_theta_2.png"),width = 1400,height=1000, pointsize=23)
 plot(density(BayesMI_thetas[,2]), main = "Distribution of theta_2", ylim = c(0,0.18),xlab="theta_2",lwd=3)
-lines(density(ABpool_samples_t[,2]), col= outcome_cols[1],lwd=2)
-lines(density(ABpool_samples_norm[,2]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(ABpool_samples_norm[,2]), col= outcome_cols[1],lwd=2)
+lines(density(ABpool_samples_t[,2]), col= outcome_cols[1], lty=2,lwd=2)
 xx <- seq(min(ABpool_samples_norm[,2])-1,max(ABpool_samples_norm[,2])+1,0.0001)
-xt <- (xx-rubin$pooled$estimate[2])/sqrt(rubin$pooled$t[2])
-tt <- dt(xt,df=rubin$pooled$df[2])/sqrt(rubin$pooled$t[2]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
-lines(tt~xx, col = outcome_cols[2],lwd=2)
-nn <- dt(xt,df=(rubin$m-1)/rubin$pooled$fmi[2]^2)/sqrt(rubin$pooled$t[2])
-lines(nn~xx, col = outcome_cols[2],lty=2,lwd=2)
+xn <- (xx-rubin_norm$pooled$estimate[2])/sqrt(rubin_norm$pooled$t[2])
+xt <- (xx-rubin_t$pooled$estimate[2])/sqrt(rubin_t$pooled$t[2])
+tt <- dt(xt,df=rubin_t$pooled$df[2])/sqrt(rubin_t$pooled$t[2]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
+nn <- dt(xn,df=rubin_norm$pooled$df[2])/sqrt(rubin_norm$pooled$t[2])
+lines(nn~xx, col = outcome_cols[2],lwd=2)
+lines(tt~xx, col = outcome_cols[2],lty=2,lwd=2)
 legend(x=22,y=0.11,
-       legend = c("MI_Bayes","ABpool_t","ABpool_norm","Rubin_t","Rubin_norm"),
+       legend = c("MI_Bayes","ABpool_norm","ABpool_t","Rubin_norm","Rubin_t"),
        col = c("black",rep(outcome_cols,each=2)),
        lty = c(1,1,2,1,2),lwd=c(3,2,2,2,2))
 dev.off()
