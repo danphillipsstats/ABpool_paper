@@ -182,15 +182,20 @@ skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,distr=c("t","nor
 # Latent variable imputation
 # For the model from Plummer (2015)
 
-# The data can be extracted from the following file: 
+# The data can be extracted from the file in any of the following links: 
+# https://static-content.springer.com/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM2_ESM.rnw
+# https://static-content.springer.com/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM1_ESM.pdf
 # https://media.springernature.com/original/springer-static/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM1_ESM.pdf
+# The data is defined in Section 1, at the bottom of page 1 of the supplementary material.
 # This is available as the supplementary material of the paper:
 # Plummer, M. Cuts in Bayesian graphical models. Stat Comput 25, 37–43 (2015). 
 # https://doi.org/10.1007/s11222-014-9503-z
 
-# First download and save the data, then
-data_directory <- paste0(dirname(dirname(getwd())),"/2_Data_for_Analysis")
-HPV_cancer_data <- read.csv(paste0(data_directory,"/HPV_cancer.csv"))
+# First read the data, the lines defining the variables nhpv, Npart, ncases, and Npop.
+HPV_cancer_data <- cbind("Z" = nhpv,
+                          "N" = Npart,
+                          "Y" = ncases,
+                          "Time" = Npop)
 HPV_cancer_data$Time <- HPV_cancer_data$Time*1e-3 # Convert time to smaller value so theta_0 is a good scale
 
 ###
@@ -336,7 +341,7 @@ t2 <- Sys.time()
 rubin$pooled$estimate
 rubin$pooled$t
 # df
-rubin$pooled$df # 0.43, 0.18 (no wonder the CIs are stupidly wide!)
+rubin$pooled$df # 0.43, 0.18 (Fig.\ \ref{fig:Plummer_theta_2})
 # fmi
 rubin$pooled$fmi # 0.98, 0.99
 # U_bar
