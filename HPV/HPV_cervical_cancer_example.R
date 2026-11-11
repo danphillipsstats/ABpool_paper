@@ -1,14 +1,9 @@
-##############################################################################
-# Real data examples
-##############################################################################
 require(mice)
 require(mvtnorm)
 require(moments)
-require(mixpoissonreg)
 require(rstan)
 require(bayesplot)
-require(glmmTMB)
-require(rjags)
+
 
 output_directory <- paste0(getwd(),"/HPV/Output")
 plot_directory <- paste0(output_directory,"/Plots")
@@ -70,14 +65,16 @@ kurtosis <- function(x, na.rm = FALSE) {
   adj <- 3 * (n - 1)^2 / ((n - 2) * (n - 3))
   (num / denom) - adj
 }
-skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,distr=c("t","norm"),alpha=0.025,term=1){
+# Cornish-Fisher approximation to the differences between ABpool and Rubin's
+# lower alpha quantiles. Assumes the posterior means agree, since the ABpool sample mean
+# can be replaced by the mean of the estimates, matching Rubin's mean and with a lower variance
+skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,alpha=0.025,term=1){
   if (is.null(dim(MLEs))){
     MLEs <- matrix(MLEs,ncol=1);
     Us <- matrix(Us,ncol=1);
     ABpool_samples <- matrix(ABpool_samples,ncol=1);
   }
   
-  distr <- match.arg(distr)
   skewness <- function(x, na.rm = FALSE) {
     if (na.rm) x <- x[!is.na(x)]
     n <- length(x)
@@ -98,83 +95,48 @@ skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,distr=c("t","nor
     (num / denom) - adj
   }
   
-  if (distr == "t"){
-    b_m <- var(MLEs[,term])
-    u_m <- mean(Us[,term])
-    nu <- rubin_pool$pooled$dfcom[term]
-    df_rubin <- rubin_pool$pooled$df[term]
-    nu_nu_2 <- nu/(nu-2)
-    total_var <- b_m + nu_nu_2*u_m
-    lambda_nu <- exp(log(b_m)-log(total_var))
-    z_a <- qnorm(alpha)
-    Cov_MLEsq_U <- cov((MLEs[,term]-mean(MLEs[,term]))^2,Us[,term])
-    sd_rubin <- sqrt((rubin_pool$pooled$ubar[term]+rubin_pool$pooled$b[term])*df_rubin/(df_rubin-2))
-    sd_par <- sd(ABpool_samples[,term])
-    skew_par <- skewness(ABpool_samples[,term])
-    kurt_par <- kurtosis(ABpool_samples[,term])
-    CF_t_terms <- c(z_a*(sd_par-sd_rubin),
-                    skew_par*sd_par*(z_a^2-1)/6,
-                    (kurt_par*sd_par - sd_rubin*6/(df_rubin-4))*(z_a^3-3*z_a)/24,
-                    -skew_par^2*sd_par*(2*z_a^3-5*z_a)/36)
-    skew_calc_terms <- c(skewness(MLEs[,term])*lambda_nu^(3/2),
-                         3*nu_nu_2*cov(MLEs[,term],Us[,term])/total_var^(3/2))
-    kurt_calc_terms <- c(kurtosis(MLEs[,term])*lambda_nu^2,
-                         6*(1-lambda_nu)^2/(nu-4),
-                         3*nu^2/((nu-2)*(nu-4))*var(Us[,term])/total_var^2,
-                         6*nu_nu_2*Cov_MLEsq_U/total_var^2)
-    calculations_info <- c(skew_calc_terms,
-                           sum(skew_calc_terms),
-                           skew_par,
-                           kurt_calc_terms,
-                           sum(kurt_calc_terms),
-                           kurt_par,
-                           CF_t_terms,
-                           sum(CF_t_terms),
-                           quantile(ABpool_samples[,term],c(alpha)) - (rubin_pool$pooled$estimate[term] + qt(alpha,(rubin_pool$m-1)/rubin_pool$pooled$fmi[term]^2)*sqrt(rubin_pool$pooled$t[term])))
-    names(calculations_info) <- c("skew_term_MLE","skew_term_Cov","skew_calc",
-                                  "skew_par",
-                                  "kurt_term_MLE","kurt_term_df","kurt_term_varU","kurt_term_Cov","kurt_calc","kurt_par",
-                                  "CF_term_var","CF_term_skew","CF_term_kurt","CF_term_skewsq",
-                                  "CF_approx_t","CI_diff_t")
+  b_m <- var(MLEs[,term])
+  u_m <- mean(Us[,term])
+  nu <- rubin_pool$pooled$dfcom[term]
+  df_rubin <- rubin_pool$pooled$df[term]
+  if (nu <= 4 || df_rubin <= 4) {
+    stop("Degrees of freedom must exceed 4 for kurtosis calculations.")
   }
-  if (distr == "norm"){
-    b_m <- var(MLEs[,term])
-    u_m <- mean(Us[,term])
-    nu <- rubin_pool$pooled$dfcom[term]
-    df_rubin <- rubin_pool$pooled$df[term]
-    total_var <- b_m + u_m
-    lambda <- exp(log(b_m)-log(total_var))
-    z_a <- qnorm(alpha)
-    Cov_MLEsq_U <- cov((MLEs[,term]-mean(MLEs[,term]))^2,Us[,term])
-    sd_rubin <- sqrt((rubin_pool$pooled$ubar[term]+rubin_pool$pooled$b[term])*df_rubin/(df_rubin-2))
-    sd_par <- sd(ABpool_samples[,term])
-    skew_par <- skewness(ABpool_samples[,term])
-    kurt_par <- kurtosis(ABpool_samples[,term])
-    CF_norm_terms <- c(0,
-                       skew_par*sd_par*(z_a^2-1)/6,
-                       (kurt_par*sd_par)*(z_a^3-3*z_a)/24,
-                       -skew_par^2*sd_par*(2*z_a^3-5*z_a)/36)
-    skew_calc_terms <- c(skewness(MLEs[,term])*lambda^(3/2),
-                         3*cov(MLEs[,term],Us[,term])/total_var^(3/2))
-    kurt_calc_terms <- c(kurtosis(MLEs[,term])*lambda^2,
-                         0,
-                         3*var(Us[,term])/total_var^2,
-                         6*Cov_MLEsq_U/total_var^2)
-    calculations_info <- c(skew_calc_terms,
-                           sum(skew_calc_terms),
-                           skew_par,
-                           kurt_calc_terms,
-                           sum(kurt_calc_terms),
-                           kurt_par,
-                           CF_norm_terms,
-                           sum(CF_norm_terms),
-                           quantile(ABpool_samples,c(alpha)) - (rubin_pool$pooled$estimate[term] + qt(alpha,(rubin_pool$m-1)/rubin_pool$pooled$fmi[term]^2)*sqrt(rubin_pool$pooled$t[term])))
-    names(calculations_info) <- c("skew_term_MLE","skew_term_Cov","skew_calc",
-                                  "skew_par",
-                                  "kurt_term_MLE","kurt_term_df","kurt_term_varU","kurt_term_Cov","kurt_calc","kurt_par",
-                                  "CF_term_var","CF_term_skew","CF_term_kurt","CF_term_skewsq",
-                                  "CF_approx_norm","CI_diff_norm")
-  }
+  if (!is.infinite(nu)) nu_nu_2 <- nu/(nu-2) else nu_nu_2 <- 1
+  total_var <- b_m + nu_nu_2*u_m
+  lambda_nu <- b_m/total_var
+  z_a <- qnorm(alpha)
+  Cov_MLEsq_U <- cov((MLEs[,term]-mean(MLEs[,term]))^2,Us[,term])
+  sd_rubin <- sqrt(rubin_pool$pooled$t[term]*df_rubin/(df_rubin-2))
+  sd_par <- sd(ABpool_samples[,term])
+  skew_par <- skewness(ABpool_samples[,term])
+  kurt_par <- kurtosis(ABpool_samples[,term])
+  CF_terms <- c(z_a*(sd_par-sd_rubin),
+                  skew_par*sd_par*(z_a^2-1)/6,
+                  (kurt_par*sd_par - sd_rubin*6/(df_rubin-4))*(z_a^3-3*z_a)/24,
+                  -skew_par^2*sd_par*(2*z_a^3-5*z_a)/36)
+  skew_calc_terms <- c(skewness(MLEs[,term])*lambda_nu^(3/2),
+                       3*nu_nu_2*cov(MLEs[,term],Us[,term])/total_var^(3/2))
+  if (!is.infinite(nu)) kurt_calc_2 <- 6*(1-lambda_nu)^2/(nu-4) else kurt_calc_2 <- 0
+  if (!is.infinite(nu)) kurt_nu_frac <- nu^2/((nu-2)*(nu-4)) else kurt_nu_frac <- 1
+  kurt_calc_terms <- c(kurtosis(MLEs[,term])*lambda_nu^2,
+                       kurt_calc_2,
+                       3*kurt_nu_frac*var(Us[,term])/total_var^2,
+                       6*nu_nu_2*Cov_MLEsq_U/total_var^2)
+  calculations_info <- c(skew_calc_terms,
+                         sum(skew_calc_terms),
+                         skew_par,
+                         kurt_calc_terms,
+                         sum(kurt_calc_terms),
+                         kurt_par,
+                         CF_terms,
+                         sum(CF_terms),
+                         quantile(ABpool_samples[,term],c(alpha)) - (rubin_pool$pooled$estimate[term] + qt(alpha,df_rubin)*sqrt(rubin_pool$pooled$t[term])))
+  names(calculations_info) <- c("skew_term_MLE","skew_term_Cov","skew_calc",
+                                "skew_par",
+                                "kurt_term_MLE","kurt_term_df","kurt_term_varU","kurt_term_Cov","kurt_calc","kurt_par",
+                                "CF_term_var","CF_term_skew","CF_term_kurt","CF_term_skewsq",
+                                "CF_approx","CI_diff")
   return(calculations_info)
 }
 
@@ -182,16 +144,17 @@ skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,distr=c("t","nor
 # Latent variable imputation
 # For the model from Plummer (2015)
 
-# The data can be extracted from the file in any of the following links: 
-# https://static-content.springer.com/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM2_ESM.rnw
-# https://static-content.springer.com/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM1_ESM.pdf
-# https://media.springernature.com/original/springer-static/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM1_ESM.pdf
-# The data is defined in Section 1, at the bottom of page 1 of the supplementary material.
-# This is available as the supplementary material of the paper:
+# The data is available in the supplementary material of the paper:
 # Plummer, M. Cuts in Bayesian graphical models. Stat Comput 25, 37–43 (2015). 
 # https://doi.org/10.1007/s11222-014-9503-z
+# The data can be extracted from the file using the following links: 
+# https://static-content.springer.com/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM2_ESM.rnw
+# The data is defined in Section 1, at the bottom of page 1 of the supplementary material.
+# The vectors defining the variables nhpv, Npart, ncases, and Npop can be copied directly
+# from the code given in the supplementary material above.
 
-# First read the data, the lines defining the variables nhpv, Npart, ncases, and Npop.
+# The data must first be extracted from the above link, 
+# defining the variables nhpv, Npart, ncases, and Npop.
 HPV_cancer_data <- cbind("Z" = nhpv,
                           "N" = Npart,
                           "Y" = ncases,
@@ -206,7 +169,6 @@ data_hpv <- list("n" = nrow(HPV_cancer_data),
                  "Y" = HPV_cancer_data[,"Y"],
                  "t" = HPV_cancer_data[,"Time"])
 wd <- getwd()
-# hpv_full_model = rstan::stan_model(file=paste0(wd,'/HPV_cancer_full.stan'))
 t1 <- Sys.time()
 hpv_impute_model = rstan::stan_model(file=paste0(wd,'/HPV_cancer_cut.stan'))
 t2 <- Sys.time()
@@ -220,16 +182,6 @@ m <- 10000
 warmup_iterations = 1e3
 nchains <- 4
 sampling_iterations = m/nchains + warmup_iterations #best to use 1e3 or higher
-
-# full_out = rstan::sampling(
-#   object = hpv_full_model,
-#   data = data_hpv,
-#   chains = nchains,
-#   cores = nchains,
-#   iter = sampling_iterations,
-#   warmup = warmup_iterations,
-#   refresh = sampling_iterations/10, #show an update @ each %10
-#   seed = 1000)
 
 t1 <- Sys.time()
 impute_out = rstan::sampling(
@@ -247,20 +199,13 @@ time_Plummer_impute <- difftime(t2,t1)
 s_impute_out <- rstan::summary(impute_out)$summary
 s_impute_phi_means <- s_impute_out[substring(rownames(s_impute_out),1,3)=="phi","mean"]
 
-# pairs(full_out, pars = c("phi[1]","phi[13]","theta_1","theta_2","lp__"))
-
 pairs(impute_out, pars = c("phi[1]","phi[13]","lp__"))
 par(mfrow=c(1,1))
 
 rstan::traceplot(impute_out, pars=c("phi[1]","phi[13]"))
 
-# s_full_out <- rstan::summary(full_out)$summary
-# s_full_eta_means <- s_full_out[substring(rownames(s_full_out),1,3)=="eta","mean"]
-# # cbind(s_impute_eta_means,s_full_eta_means)
-# extract_full_out <- rstan::extract(full_out)
 
 round(s_impute_out[,c("mean","sd","2.5%","25%","75%","97.5%")],2)
-# round(s_full_out[,c("mean","sd","2.5%","25%","75%","97.5%")],2)
 
 extract_impute_out <- rstan::extract(impute_out)
 
@@ -296,7 +241,7 @@ qqnorm(glm_theta[,2], main = "MLEs for theta_2 after imputation")
 qqline(glm_theta[,2])
 # MLEs are not normally distributed
 
-# Approximate Bayesian multiple imputation
+# Approximate Bayesian multiple imputation - dfcom = inf
 require(mvtnorm)
 sample_ABpool_norm_Plummer <- function(index,model.output.list=glms){
   model.output <- model.output.list[[index]]
@@ -314,12 +259,13 @@ qqline(ABpool_samples_norm[,1])
 qqnorm(ABpool_samples_norm[,2])
 qqline(ABpool_samples_norm[,2])
 
-# Approximate Bayesian multiple imputation - t distributed
+# Approximate Bayesian multiple imputation - dfcom = n - p
 sample_ABpool_t_Plummer <- function(index,model.output.list=glms, n = glms[[1]]$data$n){
   model.output <- model.output.list[[index]]
   MLE <- model.output$coeff
   var_mat <- vcov(model.output)
-  return(mvtnorm::rmvt(n=1, sigma = var_mat, df = n-2)+MLE) 
+  dfcom <- nobs(model.output) - length(MLE)
+  return(mvtnorm::rmvt(n=1, sigma = var_mat, df = dfcom)+MLE) 
 }
 set.seed(1)
 t1 <- Sys.time()
@@ -341,7 +287,7 @@ t2 <- Sys.time()
 rubin$pooled$estimate
 rubin$pooled$t
 # df
-rubin$pooled$df # 0.43, 0.18 (Fig.\ \ref{fig:Plummer_theta_2})
+rubin$pooled$df # 0.43, 0.18
 # fmi
 rubin$pooled$fmi # 0.98, 0.99
 # U_bar
@@ -367,7 +313,7 @@ stage_2_out = rstan::sampling(
   refresh = sampling_iterations/10, #show an update @ each %10
   seed = 1000)
 stage_2_samples <- rstan::extract(stage_2_out)
-# stage_2_samples_mat <- rstan::extract(stage_2_out,permuted=F)
+
 rstan::traceplot(stage_2_out,pars=c("theta_1_std","theta_2_std"), inc_warmup=TRUE,window=c(1,500))
 rstan::traceplot(stage_2_out,pars=c("theta_1","theta_2"), inc_warmup=TRUE,window=c(1,500))
 # Looks like 100 iterations is enough, say 200 to be safe.
@@ -414,15 +360,6 @@ qqnorm(BayesMI_thetas[,2], main = "Posterior for theta_2 after imputation")
 qqline(BayesMI_thetas[,2])
 dev.off()
 
-subsample <- ABpool_samples_norm[1:200,2]
-png(paste0(plot_directory,"/Plummer_QQ_2.png"),width = 1400,height=1000, pointsize=23)
-p <- ppoints(length(subsample))
-q_Rubin <- rubin$pooled$estimate[2] + sqrt(rubin$pooled$t[2])*qt(p,df=(rubin$m-1)/rubin$pooled$fmi[1]^2)
-qqplot(q_Rubin,subsample, xlab = "Rubin_norm theoretical quantiles", ylab = "ABpool_norm samples")
-abline(0,1)
-dev.off()
-
-
 CIs_theta_1 <- rbind(quantile(BayesMI_thetas[,1],c(0.025,0.975)),
                      quantile(ABpool_samples_t[,1],c(0.025,0.975)),
                      quantile(ABpool_samples_norm[,1],c(0.025,0.975)),
@@ -466,10 +403,10 @@ other_info <- round(rbind("Bayespool estimate" = colMeans(BayesMI_thetas),
                           "dfcom" = rubin$pooled$dfcom,
                           "fmi" = rubin$pooled$fmi,
                           "df" = rubin$pooled$df,
-                          "MLEs skewness" = skewness(glm_theta),
-                          "MLEs kurtosis" = kurtosis(glm_theta),
-                          "Posterior skewness" = skewness(BayesMI_thetas),
-                          "Posterior kurtosis" = kurtosis(BayesMI_thetas)),2)
+                          "MLEs skewness" = apply(glm_theta, 2, skewness),
+                          "MLEs kurtosis" = apply(glm_theta, 2, kurtosis),
+                          "Posterior skewness" = apply(BayesMI_thetas, 2, skewness),
+                          "Posterior kurtosis" = apply(BayesMI_thetas, 2, kurtosis)),2)
 colnames(other_info) <- c("theta_1","theta_2")
 write.csv(other_info,paste0(output_directory,"/Plummer_other_info.csv"),row.names=T)
 
@@ -523,10 +460,10 @@ dev.off()
 
 # Cornish-Fisher approximation - normal version
 
-# skew_kurt_CF_calc(glm_theta[,2],sapply(glms,function(x) vcov(x)[2,2]),rubin,ABpool_samples_norm,alpha=0.025,term=1,distr="norm")
 MLEs <- glm_theta[,2]
 Us <- sapply(glms,function(x) vcov(x)[2,2])
 
+skew_kurt_CF_calc(MLEs, Us, rubin, ABpool_samples_norm, term = 2)
 b_m <- var(MLEs)
 u_m <- mean(Us)
 nu <- rubin$pooled$dfcom[2]
