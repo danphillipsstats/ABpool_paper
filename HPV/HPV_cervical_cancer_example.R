@@ -344,17 +344,12 @@ t1 <- Sys.time()
 for (i in 1:m){
   print(i)
   data_stage2$phi <- extract_impute_out$phi[i,]
-  inits_list <- list(list(
-    theta_1_std = rev(stage_2_samples$theta_1_std)[1],
-    theta_2_std = rev(stage_2_samples$theta_2_std)[1]
-  ))
   stage_2_out = rstan::sampling(
     object = stage2_model,
     data = data_stage2,
     chains = nchains,
     cores = nchains,
     iter = sampling_iterations,
-    init = inits_list,
     warmup = warmup_iterations,
     refresh = 0, #show an update @ each %10
     seed = 1000)
