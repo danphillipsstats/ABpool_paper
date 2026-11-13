@@ -197,11 +197,12 @@ stage2_model = rstan::stan_model(file=paste0(HPV_directory,'/HPV_cancer_stage_tw
 t2 <- Sys.time()
 time_Plummer_stan_compile_BayesMI <- difftime(t2,t1)
 
+set.seed(1)
+
 m <- 10000
 warmup_iterations = 1e3
 nchains <- 4
 sampling_iterations = m/nchains + warmup_iterations #best to use 1e3 or higher
-
 t1 <- Sys.time()
 impute_out = rstan::sampling(
   object = hpv_impute_model,
@@ -215,10 +216,14 @@ impute_out = rstan::sampling(
 t2 <- Sys.time()
 time_Plummer_impute <- difftime(t2,t1)
 
-s_impute_out <- rstan::summary(impute_out)$summary
-s_impute_phi_means <- s_impute_out[substring(rownames(s_impute_out),1,3)=="phi","mean"]
+impute_summary <- rstan::summary(
+  impute_out,
+  pars = "phi"
+)$summary
 
-pairs(impute_out, pars = c("phi[1]","phi[13]","lp__"))
+impute_summary[, c("n_eff", "Rhat")] # n_eff > m so draws are independent
+
+# pairs(impute_out, pars = c("phi[1]","phi[13]","lp__"))
 par(mfrow=c(1,1))
 
 rstan::traceplot(impute_out, pars=c("phi[1]","phi[13]"))
@@ -226,9 +231,11 @@ rstan::traceplot(impute_out, pars=c("phi[1]","phi[13]"))
 
 round(s_impute_out[,c("mean","sd","2.5%","25%","75%","97.5%")],2)
 
-extract_impute_out <- rstan::extract(impute_out)
+extract_impute_out_unpermute <- rstan::extract(impute_out, pars = "phi", permuted = FALSE)
+extract_impute_out <- apply(extract_impute_out_unpermute,3,c)
+rm(extract_impute_out_unpermute)
 
-range(apply(extract_impute_out$phi,2,skewness))
+range(apply(extract_impute_out,2,skewness))
 
 ## Stage 2
 # MLE based methods
@@ -242,10 +249,11 @@ mean_mu <- numeric(m)
 n <- data_hpv$n
 
 set.seed(1)
+
 t1 <- Sys.time()
 glms <- list()
 for (i in 1:m){
-  phi_i <- extract_impute_out$phi[i,]
+  phi_i <- extract_impute_out[i,]
   X_mat <- model.matrix(Y~phi_i)
   glm_i <- glm(Y~phi_i,offset=log(times),family=poisson())
   mean_mu[i] <- mean(predict.glm(glm_i,type="response"))
@@ -268,7 +276,9 @@ sample_ABpool_norm_Plummer <- function(index,model.output.list=glms){
   var_mat <- vcov(model.output)
   return(mvtnorm::rmvnorm(n=1,mean=MLE,sigma = var_mat))
 }
+
 set.seed(1)
+
 t1 <- Sys.time()
 ABpool_samples_norm <- t(vapply(1:m,FUN=sample_ABpool_norm_Plummer,FUN.VALUE=numeric(2)))
 t2 <- Sys.time()
@@ -286,7 +296,6 @@ sample_ABpool_t_Plummer <- function(index,model.output.list=glms, n = glms[[1]]$
   dfcom <- nobs(model.output) - length(MLE)
   return(mvtnorm::rmvt(n=1, sigma = var_mat, df = dfcom)+MLE) 
 }
-set.seed(1)
 t1 <- Sys.time()
 ABpool_samples_t <- t(vapply(1:m,FUN=sample_ABpool_t_Plummer,FUN.VALUE=numeric(2)))
 t2 <- Sys.time()
@@ -314,14 +323,26 @@ rubin_t$pooled$ubar # 0.000090, 0.13
 # b
 rubin_t$pooled$b # 0.020, 6.3
 
+set.seed(1)
+
+# Diagnostic plot
+HPV_abpool_200 <- abpool::abpool(glms[1:200], parameters = 2, dfcom = Inf)
+
+png(paste0(plot_directory,"/Plummer_QQ_diagnostic.png"),width = 1400,height=1000, pointsize=23)
+abpool::qqplot_rubin_abpool(HPV_abpool_200)
+dev.off()
+
+
 ## Bayesian multiple imputation
 # Check how many iterations are needed
+
+set.seed(1)
 
 data_stage2 <- list("n" = nrow(HPV_cancer_data),
                     "Y" = HPV_cancer_data[,"Y"],
                     "t" = HPV_cancer_data[,"Time"],
                     "phi" = numeric(n))
-data_stage2$phi <- extract_impute_out$phi[1,]
+data_stage2$phi <- extract_impute_out[1,]
 stage_2_out = rstan::sampling(
   object = stage2_model,
   data = data_stage2,
@@ -330,8 +351,7 @@ stage_2_out = rstan::sampling(
   iter = sampling_iterations,
   warmup = warmup_iterations,
   refresh = sampling_iterations/10, #show an update @ each %10
-  seed = 1000)
-stage_2_samples <- rstan::extract(stage_2_out)
+  seed = 1000 + i)
 
 rstan::traceplot(stage_2_out,pars=c("theta_1_std","theta_2_std"), inc_warmup=TRUE,window=c(1,500))
 rstan::traceplot(stage_2_out,pars=c("theta_1","theta_2"), inc_warmup=TRUE,window=c(1,500))
@@ -342,8 +362,7 @@ sampling_iterations <- 1 + warmup_iterations
 nchains <- 1
 t1 <- Sys.time()
 for (i in 1:m){
-  print(i)
-  data_stage2$phi <- extract_impute_out$phi[i,]
+  data_stage2$phi <- extract_impute_out[i,]
   stage_2_out = rstan::sampling(
     object = stage2_model,
     data = data_stage2,
@@ -353,21 +372,13 @@ for (i in 1:m){
     warmup = warmup_iterations,
     refresh = 0, #show an update @ each %10
     seed = 1000)
-  stage_2_samples <- rstan::extract(stage_2_out)
-  BayesMI_thetas[i,1] <- stage_2_samples$theta_1[1]
-  BayesMI_thetas[i,2] <- stage_2_samples$theta_2[1]
+  stage_2_samples <- rstan::extract(stage_2_out, permuted = FALSE)
+  BayesMI_thetas[i,] <- stage_2_samples[1,1,c("theta_1","theta_2")]
 }
 t2 <- Sys.time()
 saveRDS(BayesMI_thetas,paste0(output_directory,"/Plummer_BayesMI_thetas.RDS"))
 BayesMI_thetas <- readRDS(paste0(output_directory,"/Plummer_BayesMI_thetas.RDS"))
 (time_Plummer_BayesMI <- difftime(t2,t1))
-
-set.seed(1)
-HPV_abpool <- abpool::abpool(glms[1:200], parameters = 2, dfcom = Inf)
-
-png(paste0(plot_directory,"/Plummer_QQ_diagnostic.png"),width = 1400,height=1000, pointsize=23)
-abpool::qqplot_rubin_abpool(HPV_abpool)
-dev.off()
 
 CIs_theta_1 <- rbind(quantile(BayesMI_thetas[,1],c(0.025,0.975)),
                      quantile(ABpool_samples_norm[,1],c(0.025,0.975)),
