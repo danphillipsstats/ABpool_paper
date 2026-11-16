@@ -1,3 +1,16 @@
+# Data
+
+# The data is available in the supplementary material of the paper:
+# Plummer, M. Cuts in Bayesian graphical models. Stat Comput 25, 37–43 (2015). 
+# https://doi.org/10.1007/s11222-014-9503-z
+# The data can be extracted from the file using the following links: 
+# https://static-content.springer.com/esm/art%3A10.1007%2Fs11222-014-9503-z/MediaObjects/11222_2014_9503_MOESM2_ESM.rnw
+# The data is defined in Section 1, at the bottom of page 1 of the supplementary material.
+# The vectors defining the variables nhpv, Npart, ncases, and Npop can be copied directly
+# from the code given in the supplementary material above.
+
+#########################
+# Load packages
 require(mice)
 require(mvtnorm)
 require(moments)
@@ -228,12 +241,8 @@ par(mfrow=c(1,1))
 
 rstan::traceplot(impute_out, pars=c("phi[1]","phi[13]"))
 
-
-round(s_impute_out[,c("mean","sd","2.5%","25%","75%","97.5%")],2)
-
-extract_impute_out_unpermute <- rstan::extract(impute_out, pars = "phi", permuted = FALSE)
-extract_impute_out <- apply(extract_impute_out_unpermute,3,c)
-rm(extract_impute_out_unpermute)
+extract_impute_out <- rstan::extract(impute_out, pars = "phi", permuted = FALSE)
+extract_impute_out <- apply(extract_impute_out,3,c)
 
 range(apply(extract_impute_out,2,skewness))
 
@@ -267,6 +276,15 @@ qqline(glm_theta[,1])
 qqnorm(glm_theta[,2], main = "MLEs for theta_2 after imputation")
 qqline(glm_theta[,2])
 # MLEs are not normally distributed
+
+set.seed(1)
+
+# Diagnostic plot
+HPV_abpool_200 <- abpool::abpool(glms[1:200], parameters = 2, dfcom = Inf)
+
+png(paste0(plot_directory,"/Plummer_QQ_diagnostic.png"),width = 1400,height=1000, pointsize=23)
+abpool::qqplot_rubin_abpool(HPV_abpool_200)
+dev.off()
 
 # Approximate Bayesian multiple imputation - dfcom = inf
 require(mvtnorm)
@@ -322,16 +340,6 @@ rubin_t$pooled$b/(rubin_t$pooled$ubar*rubin_t$pooled$dfcom/(rubin_t$pooled$dfcom
 rubin_t$pooled$ubar # 0.000090, 0.13
 # b
 rubin_t$pooled$b # 0.020, 6.3
-
-set.seed(1)
-
-# Diagnostic plot
-HPV_abpool_200 <- abpool::abpool(glms[1:200], parameters = 2, dfcom = Inf)
-
-png(paste0(plot_directory,"/Plummer_QQ_diagnostic.png"),width = 1400,height=1000, pointsize=23)
-abpool::qqplot_rubin_abpool(HPV_abpool_200)
-dev.off()
-
 
 ## Bayesian multiple imputation
 # Check how many iterations are needed
