@@ -210,8 +210,7 @@ stage2_model = rstan::stan_model(file=paste0(HPV_directory,'/HPV_cancer_stage_tw
 t2 <- Sys.time()
 time_Plummer_stan_compile_BayesMI <- difftime(t2,t1)
 
-seed_plot <- 500
-set.seed(seed_plot)
+set.seed(1)
 
 m <- 10000
 warmup_iterations = 1e3
@@ -286,49 +285,6 @@ HPV_abpool_200 <- abpool::abpool(glms[1:200], parameters = 2, dfcom = Inf)
 png(paste0(plot_directory,"/Plummer_QQ_diagnostic.png"),width = 1400,height=1000, pointsize=23)
 abpool::qqplot_rubin_abpool(HPV_abpool_200)
 dev.off()
-
-small_m <- 200
-dfcom <- Inf
-samples <- HPV_abpool_200$samples
-estimates <- sapply(glms[1:small_m], function(x) coef(x)[2])
-variances <- sapply(glms[1:small_m], function(x) vcov(x)[2,2])
-estimate <- mean(estimates)
-ubar <- mean(variances)
-b <- var(estimates)
-v <- ubar + (1 + 1/m) * b
-lambda <- (1 + 1/m) * b/v
-if (dfcom == Inf) {
-  df <- (m - 1)/lambda^2
-} else {
-  df_factor <- (1 - lambda) * dfcom * (dfcom + 1)
-  df <- (m - 1) * df_factor/((m - 1) * (dfcom + 3) + 
-                               lambda^2 * df_factor)
-}
-k <- length(samples)
-p <- ppoints(k)
-q_rubin <- estimate + qt(p, df) * sqrt(v)
-ordered_samples <- samples[order(samples)]
-nplot <- 20
-lims <- range(q_rubin)*c(0.6,1.2)
-set.seed(seed_plot)
-png(paste0(plot_directory,"/Plummer_QQ_diagnostic_grid_",seed_plot,".png"),width = 1400,height=1000, pointsize=23)
-par(mfrow = c(4,5), mar = c(2,1,1,0.1))
-replace_plot <- sample(1:nplot,1)
-for (j in 1:nplot){
-  set.seed(j*111+seed_plot)
-  rubin_samples <- estimate + rt(small_m,df) * sqrt(v)
-  if(j==replace_plot){
-    ordered_samples <- samples[order(samples)]
-  } else{
-    ordered_samples <- rubin_samples[order(rubin_samples)]
-  }
-  qqplot(x = q_rubin, y = ordered_samples, cex=0.8, xaxt = "n", yaxt = "n", xlim = lims, ylim = lims)
-  qqline(y = ordered_samples, distribution = function(p) estimate + 
-           qt(p, df) * sqrt(v))
-  abline(0,1,lty=2)
-}
-dev.off()
-
 
 # Approximate Bayesian multiple imputation - dfcom = inf
 require(mvtnorm)
@@ -482,10 +438,12 @@ other_info <- round(rbind("Bayespool estimate" = colMeans(BayesMI_thetas),
 colnames(other_info) <- c("theta_1","theta_2")
 write.csv(other_info,paste0(output_directory,"/Plummer_other_info.csv"),row.names=T)
 
-time_Plummer_impute + time_Plummer_stan_compile_impute # 1 min 27s (1min 16s to compile, 11s to run)
-time_Plummer_ABpool + time_Plummer_MLE # 28 seconds
-time_Plummer_Rubin + time_Plummer_MLE # 55 seconds (note using m =10000 unnecessary)
-time_Plummer_BayesMI + time_Plummer_stan_compile_BayesMI #  7 mins 50 s
+impute_time <- time_Plummer_impute + time_Plummer_stan_compile_impute 
+ABpool_time <- time_Plummer_ABpool + time_Plummer_MLE 
+Rubin_time <- time_Plummer_Rubin + time_Plummer_MLE 
+BayesMI_time <- time_Plummer_BayesMI + time_Plummer_stan_compile_BayesMI 
+as.numeric(BayesMI_time,units="secs")/as.numeric(ABpool_time,units="secs")
+as.numeric(BayesMI_time+impute_time,units="secs")/as.numeric(ABpool_time+impute_time,units="secs")
 
 times_Plummer <- mget(c("time_Plummer_stan_compile_impute",
                         "time_Plummer_impute",
@@ -495,6 +453,8 @@ times_Plummer <- mget(c("time_Plummer_stan_compile_impute",
                         "time_Plummer_stan_compile_BayesMI",
                         "time_Plummer_BayesMI"))
 saveRDS(times_Plummer,paste0(output_directory,"/Plummer_runtimes.RDS"))
+times_Plummer <- readRDS(paste0(output_directory,"/Plummer_runtimes.RDS"))
+
 
 # Plot of distribution for theta_1
 png(paste0(plot_directory,"/Plummer_theta_1.png"),width = 1400,height=1000, pointsize=23)
