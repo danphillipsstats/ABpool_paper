@@ -66,14 +66,32 @@ kurtosis <- function(x, na.rm = FALSE) {
   adj <- 3 * (n - 1)^2 / ((n - 2) * (n - 3))
   (num / denom) - adj
 }
-skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,distr=c("t","norm"),alpha=0.025,term=1){
-  if (is.null(dim(MLEs))){
-    MLEs <- matrix(MLEs,ncol=1);
-    Us <- matrix(Us,ncol=1);
-    ABpool_samples <- matrix(ABpool_samples,ncol=1);
+# Cornish-Fisher approximation to the differences between ABpool and Rubin's
+# lower alpha quantiles. Assumes the posterior means agree, since the ABpool sample mean
+# can be replaced by the mean of the estimates, matching Rubin's mean and with a lower variance
+# The function assumes the ABpool samples and rubin_pool were generated using the same
+# complete-data degrees of freedom dfcom.
+skew_kurt_CF_calc <- function(estimates,variances,rubin_pool,ABpool_samples,alpha=0.025,term=NULL){
+  if (!is.numeric(estimates)){stop("Estimates must be a numeric vector or matrix, with each row corresponding to each imputation")}
+  if (!is.null(dim(variances))){stop("Variances must be a numeric vector or list of matrices, with entry in the vector/list corresponding to the variance(-covariance matrix) for each imputation")}
+  if (is.numeric(variances)){
+    # Single parameter
+    if(length(variances)!=length(estimates)){stop("Estimates and variances must be vectors of the same length, with each entry corresponding to one imputation. Or a matrix and a list of matrices respectively.")}
+    if (is.null(term)) term <- 1
+  } else if (is.list(variances)){
+    # Multi parameter
+    # Checks
+    if (length(dim(variances[[1]]))!=2 || dim(variances[[1]])[1]!=dim(variances[[1]])[2]){stop("Where variances is supplied as a list, each entry must be a matrix giving the variance-covariance matrix for that imputation.")}
+    if (length(dim(estimates))!=2){stop("Where variances is supplied as a list, estimates must be a matrix")}
+    if (dim(estimates)[1]!=length(variances)){stop("The number of rows in estimates must match the length of the variances list")}
+    if (dim(estimates)[2]!=dim(variances[[1]])[1]){stop("The number of columns in estimates must match the dimension of each entry of variances")}
+    if (is.null(term)){stop("term must be supplied where multiple parameters are present")}
+    # Select the correct term
+    estimates <- estimates[,term]
+    variances <- vapply(variances,function(x) x[term,term], numeric(1))
+    ABpool_samples <- ABpool_samples[,term]
   }
   
-  distr <- match.arg(distr)
   skewness <- function(x, na.rm = FALSE) {
     if (na.rm) x <- x[!is.na(x)]
     n <- length(x)
@@ -94,83 +112,48 @@ skew_kurt_CF_calc <- function(MLEs,Us,rubin_pool,ABpool_samples,distr=c("t","nor
     (num / denom) - adj
   }
   
-  if (distr == "t"){
-    b_m <- var(MLEs[,term])
-    u_m <- mean(Us[,term])
-    nu <- rubin_pool$pooled$dfcom[term]
-    df_rubin <- rubin_pool$pooled$df[term]
-    nu_nu_2 <- nu/(nu-2)
-    total_var <- b_m + nu_nu_2*u_m
-    lambda_nu <- exp(log(b_m)-log(total_var))
-    z_a <- qnorm(alpha)
-    Cov_MLEsq_U <- cov((MLEs[,term]-mean(MLEs[,term]))^2,Us[,term])
-    sd_rubin <- sqrt((rubin_pool$pooled$ubar[term]+rubin_pool$pooled$b[term])*df_rubin/(df_rubin-2))
-    sd_par <- sd(ABpool_samples[,term])
-    skew_par <- skewness(ABpool_samples[,term])
-    kurt_par <- kurtosis(ABpool_samples[,term])
-    CF_t_terms <- c(z_a*(sd_par-sd_rubin),
-                    skew_par*sd_par*(z_a^2-1)/6,
-                    (kurt_par*sd_par - sd_rubin*6/(df_rubin-4))*(z_a^3-3*z_a)/24,
-                    -skew_par^2*sd_par*(2*z_a^3-5*z_a)/36)
-    skew_calc_terms <- c(skewness(MLEs[,term])*lambda_nu^(3/2),
-                         3*nu_nu_2*cov(MLEs[,term],Us[,term])/total_var^(3/2))
-    kurt_calc_terms <- c(kurtosis(MLEs[,term])*lambda_nu^2,
-                         6*(1-lambda_nu)^2/(nu-4),
-                         3*nu^2/((nu-2)*(nu-4))*var(Us[,term])/total_var^2,
-                         6*nu_nu_2*Cov_MLEsq_U/total_var^2)
-    calculations_info <- c(skew_calc_terms,
-                           sum(skew_calc_terms),
-                           skew_par,
-                           kurt_calc_terms,
-                           sum(kurt_calc_terms),
-                           kurt_par,
-                           CF_t_terms,
-                           sum(CF_t_terms),
-                           quantile(ABpool_samples[,term],c(alpha)) - (rubin_pool$pooled$estimate[term] + qt(alpha,(rubin_pool$m-1)/rubin_pool$pooled$fmi[term]^2)*sqrt(rubin_pool$pooled$t[term])))
-    names(calculations_info) <- c("skew_term_MLE","skew_term_Cov","skew_calc",
-                                  "skew_par",
-                                  "kurt_term_MLE","kurt_term_df","kurt_term_varU","kurt_term_Cov","kurt_calc","kurt_par",
-                                  "CF_term_var","CF_term_skew","CF_term_kurt","CF_term_skewsq",
-                                  "CF_approx_t","CI_diff_t")
+  b_m <- var(estimates)
+  u_m <- mean(variances)
+  nu <- rubin_pool$pooled$dfcom[term]
+  df_rubin <- rubin_pool$pooled$df[term]
+  if (nu <= 4 || df_rubin <= 4) {
+    stop("Degrees of freedom must exceed 4 for kurtosis calculations.")
   }
-  if (distr == "norm"){
-    b_m <- var(MLEs[,term])
-    u_m <- mean(Us[,term])
-    nu <- rubin_pool$pooled$dfcom[term]
-    df_rubin <- rubin_pool$pooled$df[term]
-    total_var <- b_m + u_m
-    lambda <- exp(log(b_m)-log(total_var))
-    z_a <- qnorm(alpha)
-    Cov_MLEsq_U <- cov((MLEs[,term]-mean(MLEs[,term]))^2,Us[,term])
-    sd_rubin <- sqrt((rubin_pool$pooled$ubar[term]+rubin_pool$pooled$b[term])*df_rubin/(df_rubin-2))
-    sd_par <- sd(ABpool_samples[,term])
-    skew_par <- skewness(ABpool_samples[,term])
-    kurt_par <- kurtosis(ABpool_samples[,term])
-    CF_norm_terms <- c(0,
-                       skew_par*sd_par*(z_a^2-1)/6,
-                       (kurt_par*sd_par)*(z_a^3-3*z_a)/24,
-                       -skew_par^2*sd_par*(2*z_a^3-5*z_a)/36)
-    skew_calc_terms <- c(skewness(MLEs[,term])*lambda^(3/2),
-                         3*cov(MLEs[,term],Us[,term])/total_var^(3/2))
-    kurt_calc_terms <- c(kurtosis(MLEs[,term])*lambda^2,
-                         0,
-                         3*var(Us[,term])/total_var^2,
-                         6*Cov_MLEsq_U/total_var^2)
-    calculations_info <- c(skew_calc_terms,
-                           sum(skew_calc_terms),
-                           skew_par,
-                           kurt_calc_terms,
-                           sum(kurt_calc_terms),
-                           kurt_par,
-                           CF_norm_terms,
-                           sum(CF_norm_terms),
-                           quantile(ABpool_samples,c(alpha)) - (rubin_pool$pooled$estimate[term] + qt(alpha,(rubin_pool$m-1)/rubin_pool$pooled$fmi[term]^2)*sqrt(rubin_pool$pooled$t[term])))
-    names(calculations_info) <- c("skew_term_MLE","skew_term_Cov","skew_calc",
-                                  "skew_par",
-                                  "kurt_term_MLE","kurt_term_df","kurt_term_varU","kurt_term_Cov","kurt_calc","kurt_par",
-                                  "CF_term_var","CF_term_skew","CF_term_kurt","CF_term_skewsq",
-                                  "CF_approx_norm","CI_diff_norm")
-  }
+  if (!is.infinite(nu)) nu_nu_2 <- nu/(nu-2) else nu_nu_2 <- 1
+  total_var <- b_m + nu_nu_2*u_m
+  lambda_nu <- b_m/total_var
+  z_a <- qnorm(alpha)
+  Cov_MLEsq_U <- cov((estimates-mean(estimates))^2,variances)
+  sd_rubin <- sqrt(rubin_pool$pooled$t[term]*df_rubin/(df_rubin-2))
+  sd_par <- sd(ABpool_samples)
+  skew_par <- skewness(ABpool_samples)
+  kurt_par <- kurtosis(ABpool_samples)
+  CF_terms <- c(z_a*(sd_par-sd_rubin),
+                skew_par*sd_par*(z_a^2-1)/6,
+                (kurt_par*sd_par - sd_rubin*6/(df_rubin-4))*(z_a^3-3*z_a)/24,
+                -skew_par^2*sd_par*(2*z_a^3-5*z_a)/36)
+  skew_calc_terms <- c(skewness(estimates)*lambda_nu^(3/2),
+                       3*nu_nu_2*cov(estimates,variances)/total_var^(3/2))
+  if (!is.infinite(nu)) kurt_calc_2 <- 6*(1-lambda_nu)^2/(nu-4) else kurt_calc_2 <- 0
+  if (!is.infinite(nu)) kurt_nu_frac <- nu^2/((nu-2)*(nu-4)) else kurt_nu_frac <- 1
+  kurt_calc_terms <- c(kurtosis(estimates)*lambda_nu^2,
+                       kurt_calc_2,
+                       3*kurt_nu_frac*var(variances)/total_var^2,
+                       6*nu_nu_2*Cov_MLEsq_U/total_var^2)
+  calculations_info <- c(skew_calc_terms,
+                         sum(skew_calc_terms),
+                         skew_par,
+                         kurt_calc_terms,
+                         sum(kurt_calc_terms),
+                         kurt_par,
+                         CF_terms,
+                         sum(CF_terms),
+                         quantile(ABpool_samples,c(alpha)) - (rubin_pool$pooled$estimate[term] + qt(alpha,df_rubin)*sqrt(rubin_pool$pooled$t[term])))
+  names(calculations_info) <- c("skew_term_MLE","skew_term_Cov","skew_calc",
+                                "skew_par",
+                                "kurt_term_MLE","kurt_term_df","kurt_term_varU","kurt_term_Cov","kurt_calc","kurt_par",
+                                "CF_term_var","CF_term_skew","CF_term_kurt","CF_term_skewsq",
+                                "CF_approx","CI_diff")
   return(calculations_info)
 }
 ###################################################
