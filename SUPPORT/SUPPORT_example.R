@@ -164,7 +164,6 @@ require(Hmisc)
 require(survminer)
 ###################################################
 # SUPPORT
-# Could be promising
 
 getHdata(support) # getHdata(support, "all") to view data dictionary
 summary(support)
@@ -182,13 +181,11 @@ support.overall.formula <- Surv(d.time, death) ~ age + num.co + scoma + alb + bi
 support.overall.cox <- coxph(support.overall.formula,data=support_filled_in)
 summary(support.overall.cox)
 confint(support.overall.cox)
-# Mention in supps - Chosen by backward deletion from the full model above, in a complete-case analysis (any individuals with a missing value for any variable included in the current model is excluded.)
+# Chosen by backward deletion from the full model above, in a complete-case analysis (any individuals with a missing value for any variable included in the current model is excluded.)
 support.formula <- Surv(d.time, death) ~ age + num.co + scoma + alb + bili + pafi + crea + meanbp + hrt + resp + temp + adlsc + dzgroup
 support.vs.cox <- coxph(support.formula,data=support_filled_in)
 summary(support.vs.cox)
 #####
-# support - bili: fmi=0.4, skew(thetahat) = -0.5, skew(theta) = -0.1, kurtosis(theta) = 0, theta not obviously non-normal
-#           bili: no difference in CIs that I'm convinced is more than randomness (not noticeable anyway)
 skewness(support$bili,na.rm=T); skewness(support$crea,na.rm=T); kurtosis(support$bili,na.rm=T); kurtosis(support$crea,na.rm=T)
 cox.support.form.char <- "Surv(d.time, death) ~ age + num.co + scoma + alb + bili + pafi + crea + meanbp + hrt + resp + temp + adlsc + dzgroup"
 (support.cox <- coxph(as.formula(cox.support.form.char),data=support))
@@ -201,71 +198,7 @@ support.data <- support[,all.vars(as.formula(cox.support.form.char))]
 apply(support.data,2,function(vec) sum(is.na(vec)))/nrow(support.data)*100 # 37.8% for alb, 29.7% for bili, 25.3% for pafi, 0.3% for crea, all others fully observed
 support.data.obs <- support.data[complete.cases(support.data),]
 
-
-# Create dummy variables for each dzgroup to prepate for schoenfeld residuals
-for(group in levels(support$dzgroup)[-1]){
-  support[,group] <- as.numeric(support$dzgroup==group)
-}
-support <- data.frame(support)
-# Create formula using the dummy variables
-cox.support.form.dummy <- paste0(strsplit(cox.support.form.char,"dzgroup")[[1]][1],paste(make.names(levels(support$dzgroup))[-1],collapse=" + "))
-(support.cox.dummy <- coxph(as.formula(cox.support.form.dummy),data=support))
-# Schoenfeld residuals - testing time-constant effect
-czph <- cox.zph(support.cox.dummy, transform="identity")
-png(paste0(plot_directory,"/SUPPORT_schoenfeld_res_cc.png"),width = 1400,height=800, pointsize=23)
-par(mfrow=c(4,5), mar = c(2.5,2.5,2.5,0.1),oma=c(1.1,1.1,0.1,1))
-for (i in 1:length(support.cox.dummy$coefficients)){
-  plot(czph[i],resid=F, main = names(support.cox.dummy$coefficients)[i], ylim=range(czph$y[,i]),col=NA)
-  points(czph$x,czph$y[,i], col="grey",cex=0.5)
-  abline(h=0,col="grey",lty=3)
-  par(new=TRUE)
-  plot(czph[i],resid=F, ylim=range(czph$y[,i]))
-  
-}
-dev.off()
-rownames(czph$table)
-
-# Martingale residuals - testing functional form
-cont_preds <- setdiff(colnames(support.data),c("d.time","death","dzgroup"))
-n_cont_pred <- length(cont_preds) # = ncol(support.data)-3
-png(paste0(plot_directory,"/SUPPORT_martingale_res_si.png"),width = 1400,height=800, pointsize=23)
-par(mfrow=c(3,4), mar = c(4.1,2.5,1.5,0.1),oma=c(1.1,1.1,0.1,1))
-for (i in 1:n_cont_pred){
-  print(i)
-  support.data_i <- support_filled_in[,c("d.time","death",cont_preds[-i], "dzgroup")] # Data excluding ith covariate
-  cox_i <- coxph(Surv(d.time, death)~.,data=support.data_i)
-  mart_resid <- residuals(cox_i, type="martingale")
-  data_i <- data.frame("covariate" = support_filled_in[,cont_preds[i]],
-                       "martingale_residual" = mart_resid)
-  data_i <- data_i[order(data_i$covariate),]
-  plot(martingale_residual~covariate,data=data_i,
-       xlab = cont_preds[i],
-       ylab = "Martingale residuals", cex=0.5,col="grey")
-  loess_fit <- loess(martingale_residual~covariate,data=data_i)
-  pred <- predict(loess_fit,se=TRUE)
-  lines(data_i$covariate, pred$fit)
-  lines(data_i$covariate, pred$fit + 2 * pred$se.fit, lty = 2)
-  lines(data_i$covariate, pred$fit - 2 * pred$se.fit, lty = 2)
-  # lines(lowess(mart_resid~support_filled_in[,cont_preds[i]]))
-}
-dev.off()
-# Martingale residuals when log(bilirubin) is used instead. Either look reasonable.
-{i <- 3
-  support.data_i <- support_filled_in[,c("d.time","death",cont_preds[-which(cont_preds=="bili")], "dzgroup")] # Data excluding ith covariate
-  cox_i <- coxph(Surv(d.time, death)~.,data=support.data_i)
-  mart_resid <- residuals(cox_i, type="martingale")
-  data_i <- data.frame("covariate" = log(support_filled_in[,cont_preds[which(cont_preds=="bili")]]),
-                       "martingale_residual" = mart_resid)
-  data_i <- data_i[order(data_i$covariate),]
-  plot(martingale_residual~covariate,data=data_i,
-       xlab = "log(bili)",
-       ylab = "Martingale residuals", cex=0.5,col="grey")
-  loess_fit <- loess(martingale_residual~covariate,data=data_i)
-  pred <- predict(loess_fit,se=TRUE)
-  lines(data_i$covariate, pred$fit)
-  lines(data_i$covariate, pred$fit + 2 * pred$se.fit, lty = 2)
-  lines(data_i$covariate, pred$fit - 2 * pred$se.fit, lty = 2)}
-
+set.seed(1)
 # Note since we're using predictive mean matching, there is only 80 odd values they might realistically choose.
 # May be computationally better to impute say m = 1000 and then use J = 100 Cox models for each one
 m <- 100000
@@ -297,30 +230,6 @@ t2 <- Sys.time()
 (cox100000 <- difftime(t2,t1))
 saveRDS(support.cox.imp,paste0(output_directory,"/cox_mice_imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
 support.cox.imp <- readRDS(paste0(output_directory,"/cox_mice_imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
-
-head(support.cox.imp$analyses)
-# Plot observed and imputed data density
-thin <- 10
-imp_1 <- c(as.matrix(round(imp_data_support$imp$alb[,seq(from=thin,to=dim(imp_data_support$imp$alb)[2],by=thin)],1)))
-png(paste0(plot_directory,"/SUPPORT_imputed_observed_data_density_alb.png"),width = 1400,height=800, pointsize=23)
-plot(density(support.data$alb,bw=0.5,na.rm=T),col=outcome_cols[2], xlab = "alb",main="",lwd=3) # blue observed data
-lines(density(imp_1,bw=0.5),col=outcome_cols[1],lwd=3) # red imputed data
-dev.off()
-
-thin <- 10
-imp_1 <- c(as.matrix(round(imp_data_support$imp$bili[,seq(from=thin,to=dim(imp_data_support$imp$bili)[2],by=thin)],1)))
-png(paste0(plot_directory,"/SUPPORT_imputed_observed_data_density_bili.png"),width = 1400,height=800, pointsize=23)
-plot(density(imp_1,bw=0.5),col=outcome_cols[1], xlab = "bili",main="",lwd=3) # red imputed data
-lines(density(support.data$bili,bw=0.5,na.rm=T),col=outcome_cols[2],lwd=3) # blue observed data
-dev.off()
-
-thin <- 10
-imp_1 <- c(as.matrix(round(imp_data_support$imp$pafi[,seq(from=thin,to=dim(imp_data_support$imp$pafi)[2],by=thin)],1)))
-png(paste0(plot_directory,"/SUPPORT_imputed_observed_data_density_pafi.png"),width = 1400,height=800, pointsize=23)
-plot(density(imp_1,bw=0.5),col=outcome_cols[1], xlab = "pafi",main="",lwd=3) # red imputed data
-lines(density(support.data$pafi,bw=0.5,na.rm=T),col=outcome_cols[2],lwd=3) # blue observed data
-dev.off()
-rm(imp_data_support)
 
 coef_list <- list()
 for (j in 1:npred.support){
@@ -363,7 +272,7 @@ round(apply(support.cox.abmi.t,2,quantile,c(0.025,0.975)),4)
 # Get skewness and fmi
 fmis <- support.cox.pool.norm$pooled$fmi
 names(fmis) <- names(coef(support.cox))
-fmis # alb and bili have decent sized fmi
+fmis # alb and bili have non-negligible fmi
 support.MLEs <- t(vapply(1:m, function(i) coef(support.cox.imp$analyses[[i]]),numeric(length(coef(support.cox.imp$analyses[[1]])))))
 support.Us <- t(vapply(1:m, function(i) diag(vcov(support.cox.imp$analyses[[i]])),numeric(length(coef(support.cox.imp$analyses[[1]])))))
 (skew_MLE <- apply(support.MLEs,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
@@ -376,14 +285,14 @@ support.Us <- t(vapply(1:m, function(i) diag(vcov(support.cox.imp$analyses[[i]])
 support.cox.imp200 <- support.cox.imp
 support.cox.imp200$analyses <- support.cox.imp$analyses[1:200]
 support.cox.abpool.norm200 <- abpool::abpool(support.cox.imp200, parameters = key_parameters, dfcom = Inf)
-# QQ plot of MLEs and posterior samples from 200 imputations
+# QQ diagnostic plot comparing ABpool and Rubin's rules from 200 imputations
 png(paste0(plot_directory,"/SUPPORT_QQplot_200.png"),width = 1400,height=1000, pointsize=23)
 par(mfrow = c(2,2))
 abpool::qqplot_rubin_abpool(support.cox.abpool.norm200)
 dev.off()
 
 support.cox.abpool.norm100000 <- abpool::abpool(support.cox.imp, parameters = key_parameters, dfcom = Inf)
-# QQ plot of MLEs and posterior samples from all imputations
+# QQ diagnostic plot comparing ABpool and Rubin's rules from all 100,000 imputations
 png(paste0(plot_directory,"/SUPPORT_QQplot_large.png"),width = 1400,height=1000, pointsize=23)
 par(mfrow = c(2,2))
 abpool::qqplot_rubin_abpool(support.cox.abpool.norm100000)
