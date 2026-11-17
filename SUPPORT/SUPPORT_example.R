@@ -269,24 +269,27 @@ dev.off()
 # Note since we're using predictive mean matching, there is only 80 odd values they might realistically choose.
 # May be computationally better to impute say m = 1000 and then use J = 100 Cox models for each one
 m <- 100000
-t1 <- Sys.time()
-support.data$H0_NA <- mice::nelsonaalen(support.data, timevar = "d.time", statusvar = "death")
-pred <- mice::make.predictorMatrix(support.data)
-# choose methods: do not impute death or H_NA; impute others with pmm
-method <- make.method(support.data)
-for (v in names(method)) {
-  method[v] <- "pmm"
+# The following takes a long time - the output can instead be loaded below.
+{
+  t1 <- Sys.time()
+  support.data$H0_NA <- mice::nelsonaalen(support.data, timevar = "d.time", statusvar = "death")
+  pred <- mice::make.predictorMatrix(support.data)
+  # choose methods: do not impute death or H_NA; impute others with pmm
+  method <- make.method(support.data)
+  for (v in names(method)) {
+    method[v] <- "pmm"
+  }
+  pred[, "d.time"] <- 0 # do not predict using d.time
+  # use H0_NA and death to predict other vars
+  pred[, "H0_NA"] <- 1
+  pred[, "death"] <- 1
+  pred["H0_NA", ] <- 0
+  pred["death", ] <- 0
+  imp_data_support <- mice(support.data, m = m, method = method, predictorMatrix = pred)
+  t2 <- Sys.time()
+  (pmm100000 <- difftime(t2,t1))
+  saveRDS(imp_data_support,paste0(output_directory,"/imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
 }
-pred[, "d.time"] <- 0 # do not predict using d.time
-# use H0_NA and death to predict other vars
-pred[, "H0_NA"] <- 1
-pred[, "death"] <- 1
-pred["H0_NA", ] <- 0
-pred["death", ] <- 0
-imp_data_support <- mice(support.data, m = m, method = method, predictorMatrix = pred)
-t2 <- Sys.time()
-(pmm100000 <- difftime(t2,t1))
-saveRDS(imp_data_support,paste0(output_directory,"/imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
 imp_data_support <- readRDS(paste0(output_directory,"/imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
 t1 <- Sys.time()
 support.cox.imp <- with(imp_data_support,coxph(as.formula(cox.support.form.char)))
