@@ -4,11 +4,7 @@
 require(mice)
 require(mvtnorm)
 require(moments)
-require(mixpoissonreg)
-require(rstan)
-require(bayesplot)
-require(glmmTMB)
-require(rjags)
+require(abpool)
 
 output_directory <- paste0(getwd(),"/SUPPORT/Output")
 plot_directory <- paste0(output_directory,"/Plots")
@@ -214,6 +210,7 @@ skewness(support$bili,na.rm=T); skewness(support$crea,na.rm=T); kurtosis(support
 cox.support.form.char <- "Surv(d.time, death) ~ age + num.co + scoma + alb + bili + pafi + crea + meanbp + hrt + resp + temp + adlsc + dzgroup"
 (support.cox <- coxph(as.formula(cox.support.form.char),data=support))
 summary(support.cox)
+key_parameters <- c("alb", "bili", "pafi", "crea")
 
 npred.support <- length(coef(support.cox))
 
@@ -350,22 +347,22 @@ support.cox.pool <- mice::pool(support.cox.imp)
 t2 <- Sys.time()
 (rubin100000 <- difftime(t2,t1))
 
+set.seed(1)
 t1 <- Sys.time()
-support.cox.abmi.norm <- t(vapply(1:m,FUN=sample_ABpool_norm,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
+support.cox.abpool.norm <- t(vapply(1:m,FUN=sample_ABpool_norm,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
 t2 <- Sys.time()
 (abminorm100000 <- difftime(t2,t1))
 t1 <- Sys.time()
-support.cox.abmi.t <- t(vapply(1:m,FUN=sample_ABpool_t_cox,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
+support.cox.abpool.t <- t(vapply(1:m,FUN=sample_ABpool_t_cox,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
 t2 <- Sys.time()
-(abmit100000 <- difftime(t2,t1))
-colnames(support.cox.abmi.norm) <- names(coef_list); colnames(support.cox.abmi.t) <- names(coef_list)
+(abpoolt100000 <- difftime(t2,t1))
 
-saveRDS(mget(c("support.cox.pool","support.cox.abmi.norm","support.cox.abmi.t")),
+saveRDS(mget(c("support.cox.pool","support.cox.abpool.norm","support.cox.abpool.t")),
         paste0(output_directory,"/SUPPORT_output_objects.RDS"))
 output_objects <- readRDS(paste0(output_directory,"/SUPPORT_output_objects.RDS"))
 support.cox.pool <- output_objects$support.cox.pool
-support.cox.abmi.norm <- output_objects$support.cox.abmi.norm
-support.cox.abmi.t <- output_objects$support.cox.abmi.t
+support.cox.abpool.norm <- output_objects$support.cox.abpool.norm
+support.cox.abpool.t <- output_objects$support.cox.abpool.t
 rm(output_objects)
 
 round(get.ci.mice(support.cox.pool),4)
@@ -382,69 +379,35 @@ fmis # alb and bili have decent sized fmi
 support.MLEs <- t(vapply(1:m, function(i) coef(support.cox.imp$analyses[[i]]),numeric(length(coef(support.cox.imp$analyses[[1]])))))
 support.Us <- t(vapply(1:m, function(i) diag(vcov(support.cox.imp$analyses[[i]])),numeric(length(coef(support.cox.imp$analyses[[1]])))))
 (skew_MLE <- apply(support.MLEs,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
-(skew_par <- apply(support.cox.abmi.t,2,skewness)) # but not for the posterior(-0.1,-0.1)
+(skew_par <- apply(support.cox.abpool.norm,2,skewness)) # but not for the posterior(-0.1,-0.1)
 (kurt_MLE <- apply(support.MLEs,2,kurtosis))
-(kurt_par <- apply(support.cox.abmi.t,2,kurtosis)) # All parameters have small excess kurtosis
+(kurt_par <- apply(support.cox.abpool.norm,2,kurtosis)) # All parameters have small excess kurtosis
 (skew_U <- apply(support.Us,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
 (kurt_U <- apply(support.Us,2,kurtosis))
 
-# QQ plot of MLEs and posterior samples from just 100 imputations
-thin <- 200
-missing_vars <- c("alb","bili","pafi","crea")
-png(paste0(plot_directory,"/SUPPORT_QQplot_missing200.png"),width = 1400,height=1000, pointsize=23)
-# define a 4-row layout: title, 4 plots, title, 4 plots
-lay <- matrix(c(
-  1, 1, 1, 1,   # row title for top row (spans 4 columns)
-  2, 3, 4, 5,   # 4 plots (top row)
-  6, 6, 6, 6,   # row title for bottom row (spans 4 columns)
-  7, 8, 9, 10   # 4 plots (bottom row)
-), nrow = 4, byrow = TRUE)
-
-layout(lay, heights = c(1, 6, 1, 6))
-
-# top row title
-par(mar = c(0, 0, 0, 0))
-plot.new()
-text(0.5, 0.4, "Q-Q plot of MLEs", cex = 1.4, font = 2)
-
-par(mar = c(4, 4, 2, 1))
-for (i in 1:length(missing_vars)){
-  vars <- missing_vars[i]
-  qqnorm(support.MLEs[1:thin,vars], main = missing_vars[i],cex=0.4)
-  qqline(support.MLEs[1:thin,vars])
-}
-
-# bottom row title
-par(mar = c(0, 0, 0, 0))
-plot.new()
-text(0.5, 0.4, "Q-Q plot of posterior samples", cex = 1.4, font = 2)
-
-par(mar = c(4, 4, 2, 1))
-for (i in 1:length(missing_vars)){
-  vars <- missing_vars[i]
-  qqnorm(support.cox.abmi.t[1:thin,vars], main = missing_vars[i],cex=0.4)
-  qqline(support.cox.abmi.t[1:thin,vars])
-}
+support.cox.imp200 <- support.cox.imp
+support.cox.imp200$analyses <- support.cox.imp$analyses[1:200]
+support.cox.abpool.norm200 <- abpool::abpool(support.cox.imp200, parameters = key_parameters, dfcom = Inf)
+# QQ plot of MLEs and posterior samples from 200 imputations
+png(paste0(plot_directory,"/SUPPORT_QQplot_200.png"),width = 1400,height=1000, pointsize=23)
+par(mfrow = c(2,2))
+abpool::qqplot_rubin_abpool(support.cox.abpool.norm200)
 dev.off()
 
-varnames <- names(coef_list)
-varnames <- sub("^dzgroup","",varnames) # removes the substring dzgroup from the start of the name
+support.cox.abpool.norm100000 <- abpool::abpool(support.cox.imp, parameters = key_parameters, dfcom = Inf)
+# QQ plot of MLEs and posterior samples from all imputations
+png(paste0(plot_directory,"/SUPPORT_QQplot_large.png"),width = 1400,height=1000, pointsize=23)
+par(mfrow = c(2,2))
+abpool::qqplot_rubin_abpool(support.cox.abpool.norm100000)
+dev.off()
+
 # Some MLEs noticeably non-normal
 png(paste0(plot_directory,"/SUPPORT_QQplot_MLEs.png"),width = 1400,height=800, pointsize=23)
-par(mfrow=c(4,5), mar = c(2.5,2.5,2.5,0.1),oma=c(0.1,0.1,0.0,1))
-for (i in 1:length(names(coef_list))){
-  vars <- names(coef_list)[i]
-  qqnorm(support.MLEs[,vars], main = varnames[i],cex=0.4)
+par(mfrow=c(2,2), mar = c(2.5,2.5,2.5,0.1),oma=c(0.1,0.1,0.0,1))
+for (i in 1:length(key_parameters)){
+  vars <- key_parameters[i]
+  qqnorm(support.MLEs[,vars], main = key_parameters[i],cex=1)
   qqline(support.MLEs[,vars])
-}
-dev.off()
-# but not really the posterior samples
-png(paste0(plot_directory,"/SUPPORT_QQplot_posterior_abmi_t.png"),width = 1400,height=800, pointsize=23)
-par(mfrow=c(4,5), mar = c(2.5,2.5,2.5,0.1),oma=c(0.1,0.1,0.0,1))
-for (i in 1:length(names(coef_list))){
-  vars <- names(coef_list)[i]
-  qqnorm(support.cox.abmi.t[,vars], main = varnames[i],cex=0.4)
-  qqline(support.cox.abmi.t[,vars])
 }
 dev.off()
 
@@ -453,50 +416,52 @@ bili_term <- which(support.cox.pool$pooled$term=="bili")
 pafi_term <- which(support.cox.pool$pooled$term=="pafi")
 crea_term <- which(support.cox.pool$pooled$term=="crea")
 
+support.cox.pool$pooled$fmi[c(alb_term,bili_term,pafi_term,crea_term)]
+
 png(paste0(plot_directory,"/SUPPORT_compare_post_missing.png"),width = 1400,height=1000, pointsize=23)
 par(mfrow=c(2,2), mar = c(2.5,2.5,2.5,0.1),oma=c(4.1,4.1,0.1,1))
-plot(density(support.cox.abmi.t[,"alb"]), main = "Distribution of albumin effect",xlab="Effect due to albumin", col=NA,ylim=c(0,6))
-xx <- seq(min(support.cox.abmi.norm[,"alb"])-1,max(support.cox.abmi.norm[,"alb"])+1,0.0001)
+plot(density(support.cox.abpool.t[,"alb"]), main = "Distribution of albumin effect",xlab="Effect due to albumin", col=NA,ylim=c(0,6))
+xx <- seq(min(support.cox.abpool.norm[,"alb"])-1,max(support.cox.abpool.norm[,"alb"])+1,0.0001)
 ss <- dnorm(xx,coef(support.overall.cox)[alb_term],sqrt(vcov(support.overall.cox)[alb_term,alb_term])) # Fill-in single imputation
 lines(ss~xx, col = "grey",lty=2,lwd=2)
-lines(density(support.cox.abmi.t[,"alb"]), col= outcome_cols[1],lwd=2)
-lines(density(support.cox.abmi.norm[,"alb"]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(support.cox.abpool.t[,"alb"]), col= outcome_cols[1],lwd=2)
+lines(density(support.cox.abpool.norm[,"alb"]), col= outcome_cols[1], lty=2,lwd=2)
 xt <- (xx-support.cox.pool$pooled$estimate[alb_term])/sqrt(support.cox.pool$pooled$t[alb_term])
 tt <- dt(xt,df=support.cox.pool$pooled$df[alb_term])/sqrt(support.cox.pool$pooled$t[alb_term]) # Rubin's t - Have to divide by the sd to correct the density as we are using the location-scale t distribution
 lines(tt~xx, col = outcome_cols[2],lwd=2)
 nn <- dt(xt,df=(support.cox.pool$m-1)/support.cox.pool$pooled$fmi[alb_term]^2)/sqrt(support.cox.pool$pooled$t[alb_term])
 lines(nn~xx, col = outcome_cols[2],lty=2,lwd=2)
 
-plot(density(support.cox.abmi.t[,"bili"]), main = "Distribution of bilirubin effect",xlab="Effect due to bilirubin", col=NA,ylim=c(0,46))
-xx <- seq(min(support.cox.abmi.norm[,"bili"])-1,max(support.cox.abmi.norm[,"bili"])+1,0.0001)
+plot(density(support.cox.abpool.t[,"bili"]), main = "Distribution of bilirubin effect",xlab="Effect due to bilirubin", col=NA,ylim=c(0,46))
+xx <- seq(min(support.cox.abpool.norm[,"bili"])-1,max(support.cox.abpool.norm[,"bili"])+1,0.0001)
 ss <- dnorm(xx,coef(support.overall.cox)[bili_term],sqrt(vcov(support.overall.cox)[bili_term,bili_term])) # Fill-in single imputation
 lines(ss~xx, col = "grey",lty=2,lwd=2)
-lines(density(support.cox.abmi.t[,"bili"]), col= outcome_cols[1],lwd=2)
-lines(density(support.cox.abmi.norm[,"bili"]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(support.cox.abpool.t[,"bili"]), col= outcome_cols[1],lwd=2)
+lines(density(support.cox.abpool.norm[,"bili"]), col= outcome_cols[1], lty=2,lwd=2)
 xt <- (xx-support.cox.pool$pooled$estimate[bili_term])/sqrt(support.cox.pool$pooled$t[bili_term])
 tt <- dt(xt,df=support.cox.pool$pooled$df[bili_term])/sqrt(support.cox.pool$pooled$t[bili_term]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
 lines(tt~xx, col = outcome_cols[2],lwd=2)
 nn <- dt(xt,df=(support.cox.pool$m-1)/support.cox.pool$pooled$fmi[bili_term]^2)/sqrt(support.cox.pool$pooled$t[bili_term])
 lines(nn~xx, col = outcome_cols[2],lty=2,lwd=2)
 
-plot(density(support.cox.abmi.t[,"pafi"]), main = "Distribution of PaO2/FiO2 ratio effect",xlab="Effect due to PaO2/FiO2 ratio", col=NA)
-xx <- seq(min(support.cox.abmi.norm[,"pafi"])-1,max(support.cox.abmi.norm[,"pafi"])+1,0.000001)
+plot(density(support.cox.abpool.t[,"pafi"]), main = "Distribution of PaO2/FiO2 ratio effect",xlab="Effect due to PaO2/FiO2 ratio", col=NA)
+xx <- seq(min(support.cox.abpool.norm[,"pafi"])-1,max(support.cox.abpool.norm[,"pafi"])+1,0.000001)
 ss <- dnorm(xx,coef(support.overall.cox)[pafi_term],sqrt(vcov(support.overall.cox)[pafi_term,pafi_term])) # Fill-in single imputation
 lines(ss~xx, col = "grey",lty=2,lwd=2)
-lines(density(support.cox.abmi.t[,"pafi"]), col= outcome_cols[1],lwd=2)
-lines(density(support.cox.abmi.norm[,"pafi"]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(support.cox.abpool.t[,"pafi"]), col= outcome_cols[1],lwd=2)
+lines(density(support.cox.abpool.norm[,"pafi"]), col= outcome_cols[1], lty=2,lwd=2)
 xt <- (xx-support.cox.pool$pooled$estimate[pafi_term])/sqrt(support.cox.pool$pooled$t[pafi_term])
 tt <- dt(xt,df=support.cox.pool$pooled$df[pafi_term])/sqrt(support.cox.pool$pooled$t[pafi_term]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
 lines(tt~xx, col = outcome_cols[2],lwd=2)
 nn <- dt(xt,df=(support.cox.pool$m-1)/support.cox.pool$pooled$fmi[pafi_term]^2)/sqrt(support.cox.pool$pooled$t[pafi_term])
 lines(nn~xx, col = outcome_cols[2],lty=2,lwd=2)
 
-plot(density(support.cox.abmi.norm[,"crea"]), main = "Distribution of creatinine effect",xlab="Effect due to creatinine", col=NA,ylim=c(0,19))
-xx <- seq(min(support.cox.abmi.norm[,"crea"])-1,max(support.cox.abmi.norm[,"crea"])+1,0.0001)
+plot(density(support.cox.abpool.norm[,"crea"]), main = "Distribution of creatinine effect",xlab="Effect due to creatinine", col=NA,ylim=c(0,19))
+xx <- seq(min(support.cox.abpool.norm[,"crea"])-1,max(support.cox.abpool.norm[,"crea"])+1,0.0001)
 ss <- dnorm(xx,coef(support.overall.cox)[crea_term],sqrt(vcov(support.overall.cox)[crea_term,crea_term])) # Fill-in single imputation
 lines(ss~xx, col = "grey",lty=2,lwd=2)
-lines(density(support.cox.abmi.t[,"crea"]), col= outcome_cols[1],lwd=2)
-lines(density(support.cox.abmi.norm[,"crea"]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(support.cox.abpool.t[,"crea"]), col= outcome_cols[1],lwd=2)
+lines(density(support.cox.abpool.norm[,"crea"]), col= outcome_cols[1], lty=2,lwd=2)
 xt <- (xx-support.cox.pool$pooled$estimate[crea_term])/sqrt(support.cox.pool$pooled$t[crea_term])
 tt <- dt(xt,df=support.cox.pool$pooled$df[crea_term])/sqrt(support.cox.pool$pooled$t[crea_term]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
 lines(tt~xx, col = outcome_cols[2],lwd=2)
@@ -505,12 +470,12 @@ lines(nn~xx, col = outcome_cols[2],lty=2,lwd=2)
 dev.off()
 
 png(paste0(plot_directory,"/SUPPORT_compare_post_bili.png"),width = 1400,height=1000, pointsize=23)
-plot(density(support.cox.abmi.t[,"bili"]), main = "Distribution of bilirubin effect",xlab="Effect due to bilirubin", col=NA,ylim=c(0,46))
-xx <- seq(min(support.cox.abmi.norm[,"bili"])-1,max(support.cox.abmi.norm[,"bili"])+1,0.0001)
+plot(density(support.cox.abpool.t[,"bili"]), main = "Distribution of bilirubin effect",xlab="Effect due to bilirubin", col=NA,ylim=c(0,46))
+xx <- seq(min(support.cox.abpool.norm[,"bili"])-1,max(support.cox.abpool.norm[,"bili"])+1,0.0001)
 ss <- dnorm(xx,coef(support.overall.cox)[bili_term],sqrt(vcov(support.overall.cox)[bili_term,bili_term])) # Fill-in single imputation
 lines(ss~xx, col = "grey",lty=2,lwd=2)
-lines(density(support.cox.abmi.t[,"bili"]), col= outcome_cols[1],lwd=2)
-lines(density(support.cox.abmi.norm[,"bili"]), col= outcome_cols[1], lty=2,lwd=2)
+lines(density(support.cox.abpool.t[,"bili"]), col= outcome_cols[1],lwd=2)
+lines(density(support.cox.abpool.norm[,"bili"]), col= outcome_cols[1], lty=2,lwd=2)
 xt <- (xx-support.cox.pool$pooled$estimate[bili_term])/sqrt(support.cox.pool$pooled$t[bili_term])
 tt <- dt(xt,df=support.cox.pool$pooled$df[bili_term])/sqrt(support.cox.pool$pooled$t[bili_term]) # Have to divide by the sd to correct the density as we are using the location-scale t distribution
 lines(tt~xx, col = outcome_cols[2],lwd=2)
@@ -528,23 +493,23 @@ posterior_summaries <- cbind("term" = rep(c("alb","bili","pafi","crea"),5),
                              "Mean" = c(coef(support.overall.cox)[missing_terms],
                                         support.cox.pool$pooled$estimate[missing_terms],
                                         support.cox.pool$pooled$estimate[missing_terms],
-                                        apply(support.cox.abmi.t,2,mean)[missing_terms],
-                                        apply(support.cox.abmi.norm,2,mean)[missing_terms]),
+                                        apply(support.cox.abpool.t,2,mean)[missing_terms],
+                                        apply(support.cox.abpool.norm,2,mean)[missing_terms]),
                              "Median" = c(coef(support.overall.cox)[missing_terms],
                                           support.cox.pool$pooled$estimate[missing_terms],
                                           support.cox.pool$pooled$estimate[missing_terms],
-                                          apply(support.cox.abmi.t,2,median)[missing_terms],
-                                          apply(support.cox.abmi.norm,2,median)[missing_terms]),
+                                          apply(support.cox.abpool.t,2,median)[missing_terms],
+                                          apply(support.cox.abpool.norm,2,median)[missing_terms]),
                              "2.5%" = c(t(confint(support.overall.cox))[1,missing_terms],
                                         round(get.ci.mice(support.cox.pool),4)[1,missing_terms],
                                         CIs_Rubin_norm[1,missing_terms],
-                                        round(apply(support.cox.abmi.t,2,quantile,c(0.025,0.975)),4)[1,missing_terms],
-                                        round(apply(support.cox.abmi.norm,2,quantile,c(0.025,0.975)),4)[1,missing_terms]),
+                                        round(apply(support.cox.abpool.t,2,quantile,c(0.025,0.975)),4)[1,missing_terms],
+                                        round(apply(support.cox.abpool.norm,2,quantile,c(0.025,0.975)),4)[1,missing_terms]),
                              "97.5%" = c(t(confint(support.overall.cox))[2,missing_terms],
                                          round(get.ci.mice(support.cox.pool),4)[2,missing_terms],
                                          CIs_Rubin_norm[2,missing_terms],
-                                         round(apply(support.cox.abmi.t,2,quantile,c(0.025,0.975)),4)[2,missing_terms],
-                                         round(apply(support.cox.abmi.norm,2,quantile,c(0.025,0.975)),4)[2,missing_terms])
+                                         round(apply(support.cox.abpool.t,2,quantile,c(0.025,0.975)),4)[2,missing_terms],
+                                         round(apply(support.cox.abpool.norm,2,quantile,c(0.025,0.975)),4)[2,missing_terms])
 )
 posterior_summaries[,c("Method","term")] <- as.character(posterior_summaries[,c("Method","term")])
 posterior_summaries[,c("Mean","Median","2.5%","97.5%")] <- format(round(as.numeric(as.matrix(posterior_summaries[,c("Mean","Median","2.5%","97.5%")])),4),4)
@@ -567,11 +532,11 @@ outputs <- list("Posterior_summaries" = posterior_summaries,
                 "missing_var_outputs" = missing_var_outputs,
                 "CI_Rubin_t" = round(get.ci.mice(support.cox.pool),4),
                 "CI_Rubin_norm" = CIs_Rubin_norm,
-                "CI_ABpool_t" = round(apply(support.cox.abmi.t,2,quantile,c(0.025,0.975)),4),
-                "CI_ABpool_norm" = round(apply(support.cox.abmi.norm,2,quantile,c(0.025,0.975)),4),
+                "CI_ABpool_t" = round(apply(support.cox.abpool.t,2,quantile,c(0.025,0.975)),4),
+                "CI_ABpool_norm" = round(apply(support.cox.abpool.norm,2,quantile,c(0.025,0.975)),4),
                 "estimates_Rubin" = support.cox.pool$pooled$estimate,
-                "estimates_ABpool_t" = apply(support.cox.abmi.t,2,mean),
-                "estimates_ABpool_norm" = apply(support.cox.abmi.norm,2,mean))
+                "estimates_ABpool_t" = apply(support.cox.abpool.t,2,mean),
+                "estimates_ABpool_norm" = apply(support.cox.abpool.norm,2,mean))
 
 saveRDS(outputs,paste0(output_directory,"/SUPPORT_outputs_results.RDS"))
 outputs <- readRDS(paste0(output_directory,"/SUPPORT_outputs_results.RDS"))
@@ -591,14 +556,14 @@ write.csv(format(round(outputs$missing_var_outputs,2),2),
 # Cornish-Fisher
 # Test Cornish-Fisher where average U is used to sample ABMI
 
-CF_calcs <- rbind(skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[1],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[2],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[3],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[4],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[1],alpha=0.975),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[2],alpha=0.975),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[3],alpha=0.975),
-                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abmi.t,term=missing_terms[4],alpha=0.975))
+CF_calcs <- rbind(skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[1],alpha=0.025),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[2],alpha=0.025),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[3],alpha=0.025),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[4],alpha=0.025),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[1],alpha=0.975),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[2],alpha=0.975),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[3],alpha=0.975),
+                  skew_kurt_CF_calc(support.MLEs,support.Us,support.cox.pool,support.cox.abpool.t,term=missing_terms[4],alpha=0.975))
 rownames(CF_calcs) <- paste0(rep(names(missing_terms),2),rep(c("_2.5%","_97.5%"),each=4))
 
 write.csv(round(CF_calcs,6),
