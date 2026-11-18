@@ -5,6 +5,9 @@ require(mice)
 require(mvtnorm)
 require(moments)
 require(abpool)
+require(survival)
+require(Hmisc)
+require(survminer)
 
 output_directory <- paste0(getwd(),"/SUPPORT/Output")
 plot_directory <- paste0(output_directory,"/Plots")
@@ -156,12 +159,6 @@ skew_kurt_CF_calc <- function(estimates,variances,rubin_pool,ABpool_samples,alph
                                 "CF_approx","CI_diff")
   return(calculations_info)
 }
-###################################################
-# Cox model
-###################################################
-require(survival)
-require(Hmisc)
-require(survminer)
 ###################################################
 # SUPPORT
 
