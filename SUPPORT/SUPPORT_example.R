@@ -332,9 +332,10 @@ full_names <- c("albumin","bilirubin","PaO2/FiO2","creatinine")
 png(paste0(plot_directory,"/SUPPORT_compare_post_missing.png"),width = 1400,height=1000, pointsize=23)
 par(mfrow=c(2,2), mar = c(2.5,2.5,2.5,0.1),oma=c(4.1,4.1,0.1,1))
 for (i in 1:4){
-  plot(density(support.cox.abpool.t[,key_parameters[i]]), 
+  plot(density(support.cox.abpool.t[,key_parameters[i]]),
+       ylim = c(0,max(density(support.cox.abpool.t[,key_parameters[i]])$y)*1.2),
        main = paste0("Distribution of ",full_names[i]," effect"),
-       xlab= paste0("Effect due to ",full_names[i]), col=NA,ylim=c(0,6))
+       xlab= paste0("Effect due to ",full_names[i]), col=NA)
   xx <- seq(min(support.cox.abpool.norm[,key_parameters[i]])-1,max(support.cox.abpool.norm[,key_parameters[i]])+1,0.0001)
   ss <- dnorm(xx,coef(support.overall.cox)[key_parameters[i]],sqrt(vcov(support.overall.cox)[key_parameters[i],key_parameters[i]])) # Fill-in single imputation
   lines(ss~xx, col = "grey",lty=2,lwd=2)
