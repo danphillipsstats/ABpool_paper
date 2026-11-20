@@ -195,12 +195,11 @@ support.data <- support[,all.vars(as.formula(cox.support.form.char))]
 apply(support.data,2,function(vec) sum(is.na(vec)))/nrow(support.data)*100 # 37.8% for alb, 29.7% for bili, 25.3% for pafi, 0.3% for crea, all others fully observed
 support.data.obs <- support.data[complete.cases(support.data),]
 
-set.seed(1)
-# Note since we're using predictive mean matching, there is only 80 odd values they might realistically choose.
-# May be computationally better to impute say m = 1000 and then use J = 100 Cox models for each one
+#########################################################################
 m <- 100000
 # The following took hours to run on my laptop. The output can be loaded below to avoid the need to rerun.
 {
+  set.seed(1)
   t1 <- Sys.time()
   support.data$H0_NA <- mice::nelsonaalen(support.data, timevar = "d.time", statusvar = "death")
   pred <- mice::make.predictorMatrix(support.data)
@@ -215,56 +214,76 @@ m <- 100000
   pred[, "death"] <- 1
   pred["H0_NA", ] <- 0
   pred["death", ] <- 0
+  # Note since we're using predictive mean matching, there is only 80 odd values they might realistically choose.
+  # May be a computationally better alternative to impute say m = 1000 and then use J = 100 Cox models for each one. But we don't do this.
+  # The imputation model takes hours to run
   imp_data_support <- mice(support.data, m = m, method = method, predictorMatrix = pred)
   t2 <- Sys.time()
   (pmm100000 <- difftime(t2,t1))
   saveRDS(imp_data_support,paste0(output_directory,"/imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
+  imp_data_support <- readRDS(paste0(output_directory,"/imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
+  # The Cox model took about 30 mins to run on my laptop.
+  # I haven't uploaded the output onto GitHub as it is too large (about 3GB).
+  set.seed(1)
+  t1 <- Sys.time()
+  support.cox.imp <- with(imp_data_support,coxph(as.formula(cox.support.form.char))) # Took about 30 mins to run
+  t2 <- Sys.time()
+  (cox100000 <- difftime(t2,t1))
+  saveRDS(support.cox.imp,paste0(output_directory,"/cox_mice_imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
+  support.cox.imp <- readRDS(paste0(output_directory,"/cox_mice_imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
+  
+  set.seed(1)
+  support.cox.abpool.norm100000 <- abpool::abpool(support.cox.imp, parameters = key_parameters, dfcom = Inf)
+  # QQ diagnostic plot comparing ABpool and Rubin's rules from all 100,000 imputations
+  png(paste0(plot_directory,"/SUPPORT_QQplot_large.png"),width = 1400,height=1000, pointsize=23)
+  par(mfrow = c(2,2))
+  abpool::qqplot_rubin_abpool(support.cox.abpool.norm100000)
+  dev.off()
+  
+  # Save 200 imputations for later QQ diagnostic
+  support.cox.imp200 <- support.cox.imp
+  support.cox.imp200$analyses <- support.cox.imp$analyses[1:200]
+  
+  support.estimates <- t(vapply(1:m, function(i) coef(support.cox.imp$analyses[[i]]),numeric(length(coef(support.cox.imp$analyses[[1]])))))
+  support.variances <- lapply(1:m, function(i) vcov(support.cox.imp$analyses[[i]]))
+  
+  set.seed(1)
+  t1 <- Sys.time()
+  support.cox.pool.t <- mice::pool(support.cox.imp)
+  t2 <- Sys.time()
+  (rubint100000 <- difftime(t2,t1))
+  
+  t1 <- Sys.time()
+  support.cox.pool.norm <- mice::pool(support.cox.imp, dfcom = Inf)
+  t2 <- Sys.time()
+  (rubin100000 <- difftime(t2,t1))
+  
+  set.seed(1)
+  t1 <- Sys.time()
+  support.cox.abpool.norm <- t(vapply(1:m,FUN=sample_ABpool_norm,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
+  t2 <- Sys.time()
+  (abpoolnorm100000 <- difftime(t2,t1))
+  t1 <- Sys.time()
+  support.cox.abpool.t <- t(vapply(1:m,FUN=sample_ABpool_t_cox,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
+  t2 <- Sys.time()
+  (abpoolt100000 <- difftime(t2,t1))
+  
+  saveRDS(mget(c("support.cox.pool.norm","support.cox.pool.t","support.cox.abpool.norm","support.cox.abpool.t",
+                 "support.cox.imp200", "support.estimates", "support.variances")),
+          paste0(output_directory,"/SUPPORT_output_objects.RDS"))
 }
-imp_data_support <- readRDS(paste0(output_directory,"/imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
-set.seed(1)
-t1 <- Sys.time()
-support.cox.imp <- with(imp_data_support,coxph(as.formula(cox.support.form.char))) # Took about 30 mins to run
-t2 <- Sys.time()
-(cox100000 <- difftime(t2,t1))
-saveRDS(support.cox.imp,paste0(output_directory,"/cox_mice_imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
-support.cox.imp <- readRDS(paste0(output_directory,"/cox_mice_imp_data_support_age_numco_scoma_alb_bili_pafi_crea_meanbp_hrt_resp_temp_adlsc_dzgroup_NACH_100000.RDS"))
-
-set.seed(1)
-coef_list <- list()
-for (j in 1:npred.support){
-  coef_list[[names(coef(support.cox))[j]]] <- sapply(1:m, function(i) coef(support.cox.imp$analyses[[i]])[j])
-  qqnorm(coef_list[[j]], main = names(coef(support.cox))[j])
-  qqline(coef_list[[j]])
-}
-t1 <- Sys.time()
-support.cox.pool.t <- mice::pool(support.cox.imp)
-t2 <- Sys.time()
-(rubint100000 <- difftime(t2,t1))
-
-t1 <- Sys.time()
-support.cox.pool.norm <- mice::pool(support.cox.imp, dfcom = Inf)
-t2 <- Sys.time()
-(rubin100000 <- difftime(t2,t1))
-
-set.seed(1)
-t1 <- Sys.time()
-support.cox.abpool.norm <- t(vapply(1:m,FUN=sample_ABpool_norm,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
-t2 <- Sys.time()
-(abpoolnorm100000 <- difftime(t2,t1))
-t1 <- Sys.time()
-support.cox.abpool.t <- t(vapply(1:m,FUN=sample_ABpool_t_cox,FUN.VALUE=numeric(length(coef(support.cox))), "mice.with.list"=support.cox.imp))
-t2 <- Sys.time()
-(abpoolt100000 <- difftime(t2,t1))
-
-saveRDS(mget(c("support.cox.pool.norm","support.cox.pool.t","support.cox.abpool.norm","support.cox.abpool.t")),
-        paste0(output_directory,"/SUPPORT_output_objects.RDS"))
+########################################################################
+# Load output
 output_objects <- readRDS(paste0(output_directory,"/SUPPORT_output_objects.RDS"))
-support.cox.pool <- output_objects$support.cox.pool
-support.cox.abpool.norm <- output_objects$support.cox.abpool.norm
-support.cox.abpool.t <- output_objects$support.cox.abpool.t
+list2env(output_objects, envir = .GlobalEnv)
 rm(output_objects)
 
 set.seed(1)
+for (par_name in key_parameters){
+  qqnorm(support.estimates[,par_name], main = par_name)
+  qqline(support.estimates[,par_name])
+}
+
 round(get.ci.mice(support.cox.pool.norm),4)
 round(apply(support.cox.abpool.norm,2,quantile,c(0.025,0.975)),4)
 round(apply(support.cox.abpool.t,2,quantile,c(0.025,0.975)),4)
@@ -273,17 +292,16 @@ round(apply(support.cox.abpool.t,2,quantile,c(0.025,0.975)),4)
 fmis <- support.cox.pool.norm$pooled$fmi
 names(fmis) <- names(coef(support.cox))
 fmis # alb and bili have non-negligible fmi
-support.MLEs <- t(vapply(1:m, function(i) coef(support.cox.imp$analyses[[i]]),numeric(length(coef(support.cox.imp$analyses[[1]])))))
-support.Us <- t(vapply(1:m, function(i) diag(vcov(support.cox.imp$analyses[[i]])),numeric(length(coef(support.cox.imp$analyses[[1]])))))
-(skew_MLE <- apply(support.MLEs,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
+support.Us <- t(vapply(1:m, function(i) diag(support.variances[[i]]),numeric(ncol(support.estimates))))
+(skew_MLE <- apply(support.estimates,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
 (skew_par <- apply(support.cox.abpool.norm,2,skewness)) # but not for the posterior(-0.1,-0.1)
-(kurt_MLE <- apply(support.MLEs,2,kurtosis))
+(kurt_MLE <- apply(support.estimates,2,kurtosis))
 (kurt_par <- apply(support.cox.abpool.norm,2,kurtosis)) # All parameters have small excess kurtosis
 (skew_U <- apply(support.Us,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
 (kurt_U <- apply(support.Us,2,kurtosis))
+rm(support.Us)
 
-support.cox.imp200 <- support.cox.imp
-support.cox.imp200$analyses <- support.cox.imp$analyses[1:200]
+set.seed(1)
 support.cox.abpool.norm200 <- abpool::abpool(support.cox.imp200, parameters = key_parameters, dfcom = Inf)
 # QQ diagnostic plot comparing ABpool and Rubin's rules from 200 imputations
 png(paste0(plot_directory,"/SUPPORT_QQplot_200.png"),width = 1400,height=1000, pointsize=23)
@@ -291,20 +309,13 @@ par(mfrow = c(2,2))
 abpool::qqplot_rubin_abpool(support.cox.abpool.norm200)
 dev.off()
 
-support.cox.abpool.norm100000 <- abpool::abpool(support.cox.imp, parameters = key_parameters, dfcom = Inf)
-# QQ diagnostic plot comparing ABpool and Rubin's rules from all 100,000 imputations
-png(paste0(plot_directory,"/SUPPORT_QQplot_large.png"),width = 1400,height=1000, pointsize=23)
-par(mfrow = c(2,2))
-abpool::qqplot_rubin_abpool(support.cox.abpool.norm100000)
-dev.off()
-
 # Some MLEs noticeably non-normal
 png(paste0(plot_directory,"/SUPPORT_QQplot_MLEs.png"),width = 1400,height=800, pointsize=23)
 par(mfrow=c(2,2), mar = c(2.5,2.5,2.5,0.1),oma=c(0.1,0.1,0.0,1))
 for (i in 1:length(key_parameters)){
   vars <- key_parameters[i]
-  qqnorm(support.MLEs[,vars], main = key_parameters[i],cex=1)
-  qqline(support.MLEs[,vars])
+  qqnorm(support.estimates[,vars], main = key_parameters[i],cex=1)
+  qqline(support.estimates[,vars])
 }
 dev.off()
 
@@ -399,7 +410,7 @@ posterior_summaries <- cbind("term" = rep(c("alb","bili","pafi","crea"),5),
                                         apply(support.cox.abpool.norm,2,mean)[missing_terms]),
                              "Median" = c(coef(support.overall.cox)[missing_terms],
                                           support.cox.pool.t$pooled$estimate[missing_terms],
-                                          support.cox.pool$pooled$estimate[missing_terms],
+                                          support.cox.pool.norm$pooled$estimate[missing_terms],
                                           apply(support.cox.abpool.t,2,median)[missing_terms],
                                           apply(support.cox.abpool.norm,2,median)[missing_terms]),
                              "2.5%" = c(t(confint(support.overall.cox))[1,missing_terms],
@@ -459,15 +470,14 @@ write.csv(format(round(outputs$missing_var_outputs,2),2),
 # Cornish-Fisher
 # Test Cornish-Fisher where average U is used to sample ABpool
 
-support.variances <- lapply(1:m, function(i) vcov(support.cox.imp$analyses[[i]]))
-CF_calcs <- rbind(skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[1],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[2],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[3],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[4],alpha=0.025),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[1],alpha=0.975),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[2],alpha=0.975),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[3],alpha=0.975),
-                  skew_kurt_CF_calc(support.MLEs,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[4],alpha=0.975))
+CF_calcs <- rbind(skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[1],alpha=0.025),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[2],alpha=0.025),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[3],alpha=0.025),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[4],alpha=0.025),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[1],alpha=0.975),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[2],alpha=0.975),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[3],alpha=0.975),
+                  skew_kurt_CF_calc(support.estimates,support.variances,support.cox.pool.norm,support.cox.abpool.norm,term=missing_terms[4],alpha=0.975))
 rownames(CF_calcs) <- paste0(rep(names(missing_terms),2),rep(c("_2.5%","_97.5%"),each=4))
 
 write.csv(round(CF_calcs,6),
