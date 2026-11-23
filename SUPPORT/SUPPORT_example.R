@@ -426,6 +426,46 @@ write.csv(outputs$Posterior_summaries,
           paste0(output_directory,"/SUPPORT_results.csv"),
           row.names = FALSE)
 
+# Create LaTeX table
+df <- read.csv(paste0(output_directory,"/SUPPORT_results.csv"),
+               check.names = FALSE,
+               colClasses = "character")
+
+# Escape underscores for LaTeX
+df$Method <- gsub("_", "\\_", df$Method, fixed = TRUE)
+
+# Only display each parameter name on its first row
+df$term[duplicated(df$term)] <- ""
+
+# Build LaTeX table rows
+rows <- apply(df, 1, function(x) {
+  paste0("\t\t", paste(x, collapse = " & "), " \\\\")
+})
+
+# Add horizontal lines after each parameter group
+group_ends <- which(c(df$term[-1] != "", TRUE))
+
+rows[group_ends] <- paste0(rows[group_ends], "\n\t\t\\hline")
+
+# Build complete LaTeX table
+latex <- paste0(
+  "\\begin{supptable}\n",
+  "\t\\captionof{supptable}{\\textbf{Posterior summaries for SUPPORT}}\n",
+  "\t\\centering\n",
+  "\t\\begin{tabular}{|cc|cccc|}\n",
+  "\t\t\\hline\n",
+  "\t\t& Method & Mean & Median & 2.5\\% & 97.5\\% \\\\\n",
+  "\t\t\\hline\n",
+  paste(rows, collapse = "\n"),
+  "\n\t\\end{tabular}\\flushleft\n",
+  "\tPosterior mean, median and 95\\% uncertainty interval for four of the parameters in the Cox model on the SUPPORT dataset. We compare the single imputation model recommended by the authors (Single\\_imp) with multiple imputation pooled by Rubin's rules and Approximate Bayesian pooling (ABpool), each with a Gaussian (norm) and $t$ assumption.\n",
+  "\t\\label{tab:SUPPORT}\n",
+  "\\end{supptable}"
+)
+
+# Print LaTeX code to console
+cat(latex)
+
 write.csv(format(round(outputs$missing_var_outputs,2),2),
           paste0(output_directory,"/SUPPORT_supplementary_info.csv"),
           row.names = TRUE)
