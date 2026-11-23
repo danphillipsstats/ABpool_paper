@@ -500,3 +500,10 @@ Us <- lapply(glms,function(x) vcov(x))
 skew_kurt_CF_calc_norm <- skew_kurt_CF_calc(MLEs, Us, rubin_norm, ABpool_samples_norm, term = 2)
 write.csv(skew_kurt_CF_calc_norm,paste0(output_directory,"/Plummer_calculations_norm_info_theta_2.csv"),row.names=T)
 
+# Large diagnostic plot
+set.seed(1)
+HPV_abpool <- abpool::abpool(glms, parameters = 2, dfcom = Inf)
+
+png(paste0(plot_directory,"/Plummer_QQ_diagnostic_large.png"),width = 1400,height=1000, pointsize=23)
+abpool::qqplot_rubin_abpool(HPV_abpool)
+dev.off()
