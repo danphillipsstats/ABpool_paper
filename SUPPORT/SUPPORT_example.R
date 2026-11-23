@@ -58,7 +58,7 @@ skewness <- function(x, na.rm = FALSE) {
   sum(((x - m) / s)^3) * n / ((n - 1) * (n - 2))
 }
 
-# Function for kurtosis
+# Function for excess kurtosis
 kurtosis <- function(x, na.rm = FALSE) {
   if (na.rm) x <- x[!is.na(x)]
   n <- length(x)
