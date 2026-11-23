@@ -298,7 +298,7 @@ round(apply(support.cox.abpool.t,2,quantile,c(0.025,0.975)),4)
 # Get skewness and fmi
 fmis <- support.cox.pooled.norm$fmi
 names(fmis) <- names(coef(support.cox))
-fmis # alb and bili have non-negligible fmi
+fmis[key_parameters] # alb and bili have non-negligible fmi
 support.Us <- t(vapply(1:m, function(i) diag(support.variances[[i]]),numeric(ncol(support.estimates))))
 (skew_MLE <- apply(support.estimates,2,skewness)) # crea and bili have considerable skewness (-1.1,-0.5)
 (skew_par <- apply(support.cox.abpool.norm,2,skewness)) # but not for the posterior(-0.1,-0.1)
