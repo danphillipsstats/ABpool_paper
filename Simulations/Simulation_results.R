@@ -19,12 +19,12 @@ if (!dir.exists(output_directory)) {
 results_output_directory <- output_directory
 sims_output_directory <- output_directory
 
-results_lin <- readRDS(paste0(results_output_directory,"/v20_linear_regression_nobs_propmis_25_scen_Bayesimp_B5000.RDS"))
-results_lin_lnorm <- readRDS(paste0(results_output_directory,"/v21_linear_regression_nobs_propmis_25_scen_Bayesimp_lognormalXskew2_B5000.RDS"))
-results_log <- readRDS(paste0(results_output_directory,"/v20_logistic_regression_nobs_propmis_15_scen_Bayesimp_B5000.RDS"))
-results_log_lnorm <- readRDS(paste0(results_output_directory,"/v21_logistic_regression_nobs_propmis_15_scen_Bayesimp_lognormalXskew2_B5000.RDS"))
-results_cox <- readRDS(paste0(results_output_directory,"/v20_cox_regression_nobs_propmis_20_scen_Bayesimp_cens20_B5000.RDS"))
-results_cox_lnorm <- readRDS(paste0(results_output_directory,"/v20_cox_regression_nobs_propmis_20_scen_Bayesimp_cens20_lognormalXskew2_B5000.RDS"))
+results_lin <- readRDS(paste0(results_output_directory,"/v20_linear_regression_nobs_propmis_25_scen_Bayesimp_B5000_nootherinfo.RDS"))
+results_lin_lnorm <- readRDS(paste0(results_output_directory,"/v21_linear_regression_nobs_propmis_25_scen_Bayesimp_lognormalXskew2_B5000_nootherinfo.RDS"))
+results_log <- readRDS(paste0(results_output_directory,"/v20_logistic_regression_nobs_propmis_15_scen_Bayesimp_B5000_nootherinfo.RDS"))
+results_log_lnorm <- readRDS(paste0(results_output_directory,"/v21_logistic_regression_nobs_propmis_15_scen_Bayesimp_lognormalXskew2_B5000_nootherinfo.RDS"))
+results_cox <- readRDS(paste0(results_output_directory,"/v20_cox_regression_nobs_propmis_20_scen_Bayesimp_cens20_B5000_nootherinfo.RDS"))
+results_cox_lnorm <- readRDS(paste0(results_output_directory,"/v20_cox_regression_nobs_propmis_20_scen_Bayesimp_cens20_lognormalXskew2_B5000_nootherinfo.RDS"))
 
 other_info_types <- c("ess_bulk","ess_tail","fmi","df.com","df.barnard","df.norm","skew_MLE","kurt_MLE","skew_U","kurt_U","skew_par","kurt_par","divergences")
 
@@ -475,12 +475,12 @@ dev.off()
 
 #####
 # Lower coverage
-lower_coverages_lin <- 1 - lower_coverages_lin + coverages_lin
-lower_coverages_lin_lnorm <- 1 - lower_coverages_lin_lnorm + coverages_lin_lnorm
-lower_coverages_log <- 1 - lower_coverages_log + coverages_log
-lower_coverages_log_lnorm <- 1 - lower_coverages_log_lnorm + coverages_log_lnorm
-lower_coverages_cox <- 1 - lower_coverages_cox + coverages_cox
-lower_coverages_cox_lnorm <- 1 - lower_coverages_cox_lnorm + coverages_cox_lnorm
+lower_coverages_lin <- 1 - upper_coverages_lin + coverages_lin
+lower_coverages_lin_lnorm <- 1 - upper_coverages_lin_lnorm + coverages_lin_lnorm
+lower_coverages_log <- 1 - upper_coverages_log + coverages_log
+lower_coverages_log_lnorm <- 1 - upper_coverages_log_lnorm + coverages_log_lnorm
+lower_coverages_cox <- 1 - upper_coverages_cox + coverages_cox
+lower_coverages_cox_lnorm <- 1 - upper_coverages_cox_lnorm + coverages_cox_lnorm
 
 png(paste0(sims_output_directory,"/Plots/","v21_stan_combined_coverage_lower.png"),width = 2000,height=1000, pointsize=16)
 layout_mat <- matrix(c(1,2,3,
@@ -887,9 +887,9 @@ ABpool_wins_coverage <- (sim_results_scen[,"Rubin_1000","coverage"]==0 &
                            sim_results_scen[,"ABpool_t_10000","coverage"]==1)
 ABpool_wins_power <- (sim_results_scen[,"Rubin_1000","power"]==0 &
                            sim_results_scen[,"ABpool_t_10000","power"]==1)
-apply(sim_results_scen[results_lin[[5]]$other_info[,"bias_Bayes"]>0,,"2.5 %"],2,quantile,c(0.1,0.5,0.9))
-apply(results_lin[[5]]$other_info[rubin_wins_coverage,],2,quantile,c(0.1,0.5,0.9),na.rm=T)
-apply(results_lin[[5]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9),na.rm=T)
+# apply(sim_results_scen[results_lin[[5]]$other_info[,"bias_Bayes"]>0,,"2.5 %"],2,quantile,c(0.1,0.5,0.9))
+# apply(results_lin[[5]]$other_info[rubin_wins_coverage,],2,quantile,c(0.1,0.5,0.9),na.rm=T)
+# apply(results_lin[[5]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9),na.rm=T)
 
 results_lin[[10]]$results[imp_rows,]
 results_lin[[10]]$other_info_summary
@@ -904,8 +904,8 @@ ABpool_wins_coverage <- (sim_results_scen[,"Rubin_1000","coverage"]==0 &
                            sim_results_scen[,"ABpool_t_10000","coverage"]==1)
 ABpool_wins_power <- (sim_results_scen[,"Rubin_1000","power"]==0 &
                         sim_results_scen[,"ABpool_t_10000","power"]==1)
-apply(results_lin[[10]]$other_info[rubin_wins_coverage,],2,quantile,c(0.1,0.5,0.9))
-apply(results_lin[[10]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9))
+# apply(results_lin[[10]]$other_info[rubin_wins_coverage,],2,quantile,c(0.1,0.5,0.9))
+# apply(results_lin[[10]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9))
 sim_results_scen[rubin_wins_power,,"2.5 %"]
 sim_results_scen[rubin_wins_power,,"97.5 %"]
 
@@ -929,8 +929,8 @@ ABpool_wins_coverage <- (sim_results_scen[,"Rubin_1000","coverage"]==0 &
 ABpool_wins_power <- (sim_results_scen[,"Rubin_1000","power"]==0 &
                         sim_results_scen[,"ABpool_t_10000","power"]==1)
 sum(rubin_wins_coverage&rubin_wins_power)
-apply(results_lin_lnorm[[20]]$other_info[rubin_wins_coverage,],2,quantile,c(0.1,0.5,0.9))
-apply(results_lin_lnorm[[20]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9))
+# apply(results_lin_lnorm[[20]]$other_info[rubin_wins_coverage,],2,quantile,c(0.1,0.5,0.9))
+# apply(results_lin_lnorm[[20]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9))
 
 results_lin_lnorm[[25]]$other_info_summary
 results_lin_lnorm[[25]]$results[imp_rows,]
@@ -952,7 +952,7 @@ ABpool_wins_coverage <- (sim_results_scen[,"Rubin_1000","coverage"]==0 &
 ABpool_wins_power <- (sim_results_scen[,"Rubin_1000","power"]==0 &
                         sim_results_scen[,"ABpool_t_10000","power"]==1)
 sum(ABpool_wins_power&ABpool_wins_coverage)
-apply(results_log[[1]]$other_info[ABpool_wins_power,],2,quantile,c(0.1,0.5,0.9))
+# apply(results_log[[1]]$other_info[ABpool_wins_power,],2,quantile,c(0.1,0.5,0.9))
 results_log[[6]]$results[imp_rows,]
 results_log[[6]]$other_info_summary
 
@@ -960,7 +960,7 @@ results_log[[6]]$other_info_summary
 results_cox[[1]]$other_info_summary
 results_cox[[3]]$other_info_summary
 
-results_cox[[5]]$other_info
+# results_cox[[5]]$other_info
 results_cox[[5]]$other_info_summary
 results_cox[[10]]$other_info_summary
 
@@ -976,4 +976,4 @@ ABpool_wins_coverage <- (sim_results_scen[,"Rubin_norm_1000","coverage"]==0 &
 ABpool_wins_power <- (sim_results_scen[,"Rubin_norm_1000","power"]==0 &
                         sim_results_scen[,"ABpool_norm_10000","power"]==1)
 sum(rubin_wins_coverage&rubin_wins_power)
-apply(results_cox[[5]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9))
+# apply(results_cox[[5]]$other_info[rubin_wins_power,],2,quantile,c(0.1,0.5,0.9))
