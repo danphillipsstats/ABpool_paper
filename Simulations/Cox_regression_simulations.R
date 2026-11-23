@@ -1,4 +1,4 @@
-### Pilot simulation study
+### Simulation study - Cox regression with Gaussian covariate
 # Load packages
 t_init <- Sys.time()
 
@@ -176,7 +176,7 @@ results <- data.frame("2.5 %" = rep(0,length(methnames)),
 colnames(results) <- c("2.5 %","97.5 %","CI_width","power","coverage","miss_low")
 results_i <- results
 nworkers <- length(parallelly::availableWorkers())
-# Run in parallel using mclapply or something.
+# Run in parallel using snowfall
 
 cox_regression_sims <- function(B, parameters_in){
   n_obs <- parameters_in$n_obs
@@ -296,11 +296,6 @@ cox_regression_sims <- function(B, parameters_in){
       
       ess_b <- rstan::ess_bulk(stan_out$X_mis[,1])
       ess_t <- rstan::ess_tail(stan_out$X_mis[,1])
-      
-      # imp_data_i <- tryCatch(mice(data_i, predictorMatrix = pred_mat,
-      #                             m = m, method = "norm", # Note m is slightly naughtily defined outside the function
-      #                             printFlag = F, maxit=1),
-      #                        error = function(e) e) #maxit=1 because there is only one variable with missing data and the posterior can be sampled from exactly due to conjugate priors.
       
       {
         t3 <- Sys.time()

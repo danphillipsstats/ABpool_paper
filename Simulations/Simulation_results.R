@@ -1,4 +1,4 @@
-### Pilot simulation study results
+### Simulation study results
 # Load packages
 t_init <- Sys.time()
 

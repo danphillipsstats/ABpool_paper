@@ -1,4 +1,4 @@
-### Pilot simulation study
+### Simulation study - Linear regression with lognormal covariate
 # Load packages
 t_init <- Sys.time()
 
@@ -38,7 +38,7 @@ kurtosis <- function(x, na.rm = FALSE) {
   (num / denom) - adj
 }
 #######
-# Simulating normal data
+# Simulating lognormal data
 alpha <- 0.05
 power <- 0.8
 
@@ -173,7 +173,7 @@ results <- data.frame("2.5 %" = rep(0,length(methnames)),
 colnames(results) <- c("2.5 %","97.5 %","CI_width","power","coverage","miss_low")
 results_i <- results
 nworkers <- length(parallelly::availableWorkers())
-# Run in parallel using mclapply or something.
+# Run in parallel using snowfall
 
 linear_regression_sims <- function(B, parameters_in){
   n_obs <- parameters_in$n_obs
@@ -280,9 +280,6 @@ linear_regression_sims <- function(B, parameters_in){
     
     ess_b <- rstan::ess_bulk(stan_out$X_mis[,1])
     ess_t <- rstan::ess_tail(stan_out$X_mis[,1])
-    
-    # imp_data_i <- tryCatch(mice(data_i, m = m, method = "norm",printFlag = F, maxit=1), error = function(e) e) #maxit=1 because there is only one variable with missing data and the posterior can be sampled from exactly due to conjugate priors.
-    
     
     t3 <- Sys.time()
     runtimes[count,2] <- difftime(t3,t2, units = "secs")
