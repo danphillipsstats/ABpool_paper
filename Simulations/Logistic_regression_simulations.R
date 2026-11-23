@@ -498,8 +498,9 @@ for (i in 1:length(parameters_list)){
   out$ub_95_CI <-  t(apply( do.call(rbind,lapply(out_sublist,FUN=function(x){x$ub_95_CI})) ,2,my_quantile))
   out$CI_width <-  t(apply( do.call(rbind,lapply(out_sublist,FUN=function(x){x$CI_width})) ,2,my_quantile))
   out$parameters <- out_sublist[[1]]$parameters
-  out$sim_results_array <- do.call(abind,c(lapply(out_sublist,FUN=function(x){x$sim_results_array}),along=1))
-  out$other_info <- do.call(rbind,lapply(out_sublist,FUN=function(x){x$other_info}))
+  # out$sim_results_array <- do.call(abind,c(lapply(out_sublist,FUN=function(x){x$sim_results_array}),along=1))
+  # out$other_info <- do.call(rbind,lapply(out_sublist,FUN=function(x){x$other_info}))
+  out$other_info <- NULL; out$sim_results_array <- NULL; # As these objects are too large to save
   out$other_info_summary <- rbind(colMeans(out$other_info,na.rm=TRUE),apply(out$other_info,2,my_quantile,na.rm=TRUE))
   runtimes <-  do.call(rbind,lapply(out_sublist,FUN=function(x){x$runtimes}))
   out$runtimes <- colMeans(runtimes)
@@ -508,7 +509,7 @@ for (i in 1:length(parameters_list)){
   out$error_count <- Reduce("+",lapply(out_sublist,FUN=function(x){x$error_count}))
   out$CF_NA_count <- Reduce("+",lapply(out_sublist,FUN=function(x){x$CF_NA_count}))
   out$B <- Reduce("+",lapply(out_sublist,FUN=function(x){x$B}))
-  out$stan_model <- logistic_model
+  out$stan_model <- "Normal_covariate_logistic_regression.stan"
   rm(runtimes,out_sublist)
   
   out_list[[i]] <- out
@@ -517,6 +518,6 @@ for (i in 1:length(parameters_list)){
 out_list <- rev(out_list) # un-reverse the simulation scenario order.
 names(out_list) <- scen # Name the scenarios
 
-saveRDS(out_list,paste0(output_directory,"/",name,".RDS"))
+saveRDS(out_list,paste0(output_directory,"/",name,"_nootherinfo.RDS"))
 t_end <- Sys.time()
 print(difftime(t_end,t_init))
