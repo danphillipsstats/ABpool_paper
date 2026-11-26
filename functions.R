@@ -145,3 +145,26 @@ sample_ABpool_t_cox <- function(index,mice.with.list){
 nmis <- function(x)sum(is.na(x))
 propmis <- function(x)sum(is.na(x))/length(x)
 
+# Rubin's rules CI
+rubin <- function(estimates, variances, dfcom, alpha = 0.05){
+  m <- length(estimates)
+  estimate <- mean(estimates)
+  ubar <- mean(variances)
+  b <- var(estimates)
+  v <- ubar + (1 + 1/m) * b
+  lambda <- (1 + 1/m) * b/v
+  if (dfcom == Inf) {
+    df <- (m - 1)/lambda^2
+  }
+  else {
+    df_factor <- (1 - lambda) * dfcom * (dfcom + 1)
+    df <- (m - 1) * df_factor/((m - 1) * (dfcom + 3) + 
+                                 lambda^2 * df_factor)
+  }
+  p <- c(alpha/2,1-alpha/2)
+  list("estimate" = estimate,
+       "df" = df,
+       "variance" = v,
+       "lambda" = lambda,
+       "ci" = estimate + qt(p, df) * sqrt(v))
+}
