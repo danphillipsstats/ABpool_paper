@@ -1,4 +1,9 @@
 # COVID-19 vaccine efficacy example
+This example reproduces an analysis from Phillips et al. (2024) Improved estimates of COVID-19 correlates of protection, antibody decay and vaccine efficacy waning: a joint modelling approach, medRxiv. doi.org/10.1101/2024.07.02.24309776v1.
+The analysis fits a (two-stage multiple imputation) joint model for antibody decay, vaccine efficacy waning and correlates of protection, after receipt of a COVID-19 vaccine.
+In the ABpool paper, we refit the analysis for the symptomatic outcome, and compare ABpool to Rubin's rules, for dfcom = Inf, and dfcom = n_event - p.
+
+## Obtaining the data
 The COV002 trial data is available via request on the Vivli platform https://doi.org/10.25934/PR00010299.
 We do not provide the data as part of this repository, therefore the code will produce an error.
 We are yet to verify whether this dataset matches exactly the data we used, so the code may still not run even with this dataset.
