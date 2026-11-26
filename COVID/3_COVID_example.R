@@ -47,23 +47,20 @@ library(parallel)
 
 #######
 # Load user-written functions
+source(paste0(directory,"/functions.R"))
 source(paste0(directory_project,"/functions.R"))
 ################################################################################
 # Two-stage model, second stage
 n.outcomes <- 2
-out <- list()
 cox_model_name_symptomatic <- paste0("_",cox_model_name,"_",model_name)
 cox_stage_two_symptomatic <- readRDS(paste0(output_directory,"/Cox_infection_model_long_",long_file_name,"_",cox_model_name,".RDS"))
 # Read the output from Posterior_estimates.R
-out <- readRDS(paste0(output_directory,"/Posterior_estimates_cox_infection_model_long_",long_file_name,"_",cox_model_name,"_",model_name,".RDS"))
+out <- readRDS(paste0(output_directory,"/Histograms_and_antibody_values.RDS"))
 # Save the entries which don't depend on outcome separately
-data_long <- out$data_long
 pred_antibody_values_28_hist <- out$pred_antibody_values_28_hist
 pred_antibody_values_182_hist <- out$pred_antibody_values_182_hist
 tens_BAU <- out$tens_BAU
-tens_BAU2 <- tens_BAU[which(tens_BAU>1)]
-antibody_quantiles <- out$antibody_quantiles
-VE_vs_time_omicron <- out$VE_vs_time_omicron
+rm(out)
 n <- nrow(cox_stage_two_symptomatic$cox_model_mat)
 n_pred <- ncol(cox_stage_two_symptomatic$cox_model_mat)
 
