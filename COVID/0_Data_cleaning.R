@@ -10,8 +10,10 @@ require(openxlsx)
 # directories
 directory <- getwd() 
 directory_project <- paste0(directory,"/COVID")
-output_directory <- paste0(directory_project,"/4_Output")
-plot_directory <- paste0(directory_project,"/4_Output/Plots")
+output_directory <- paste0(directory_project,"/Output")
+plot_directory <- paste0(directory_project,"/Output/Plots")
+
+source(paste0(directory_project,"/functions.R"))
 
 ################################################################################
 # Load data
@@ -52,14 +54,14 @@ head(seropositive)
 ##########################################
 # Read the antibody data
 # PPD
-PPD <- read.xlsx(paste0(data_directory,"/AZD1222_UNBLINDED_Final_20210730.xlsx"))
+PPD <- read.xlsx(paste0(data_directory,"/Antibody_data/AZD1222_UNBLINDED_Final_20210730.xlsx"))
 # Remove COV005
 PPD <- PPD[which(substring(PPD$MBREFID,1,6)!="COV005"),]
 
-Jenner <- read.xlsx(paste0(data_directory,"/COV002 Std Spike data QC'd up to 18082021.xlsx"))
-Monogram <- read.csv(paste0(data_directory,"/Monogram_ID50_raw 12AUG21.csv"))
-PHE <- read.csv(paste0(data_directory,"/PHE Merged ND50 12MAY21.csv"))
-PHE2 <- read.csv(paste0(data_directory,"/PHE Merged ND80 12MAY21.csv"))
+Jenner <- read.xlsx(paste0(data_directory,"/Antibody_data/COV002 Std Spike data QC'd up to 18082021.xlsx"))
+Monogram <- read.csv(paste0(data_directory,"/Antibody_data/Monogram_ID50_raw 12AUG21.csv"))
+PHE <- read.csv(paste0(data_directory,"/Antibody_data/PHE Merged ND50 12MAY21.csv"))
+PHE2 <- read.csv(paste0(data_directory,"/Antibody_data/PHE Merged ND80 12MAY21.csv"))
 
 ################################################################################
 # COV002

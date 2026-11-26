@@ -9,8 +9,8 @@ print(t1)
 # Define the directories in which files are saved - these may need adjusting for other users.
 directory <- getwd() 
 directory_project <- paste0(directory,"/COVID")
-output_directory <- paste0(directory_project,"/4_Output")
-plot_directory <- paste0(directory_project,"/4_Output/Plots")
+output_directory <- paste0(directory_project,"/Output")
+plot_directory <- paste0(directory_project,"/Output/Plots")
 
 #load packages
 library(rstan)
